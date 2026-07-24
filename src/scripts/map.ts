@@ -29,12 +29,12 @@ const FAMILIES: Fam[] = ([
   { key: 'edu',   name: 'Education, Law & Social',       groups: ['21', '23', '25'], color: '#12867a' },
   { key: 'health',name: 'Healthcare',                    groups: ['29', '31'],       color: '#d8474d' },
   { key: 'arts',  name: 'Arts & Media',                  groups: ['27'],             color: '#c94f9a' },
-  { key: 'sales', name: 'Sales & Office',                groups: ['41', '43'],       color: '#8a5cc7', distributed: true },
-  { key: 'mgmt',  name: 'Management & Business',         groups: ['11', '13'],       color: '#7a879e', distributed: true },
+  { key: 'sales', name: 'Sales & Office',                groups: ['41', '43'],       color: '#a575e8', distributed: true },
+  { key: 'mgmt',  name: 'Management & Business',         groups: ['11', '13'],       color: '#73b0ee', distributed: true },
   { key: 'food',  name: 'Food & Hospitality',           groups: ['35'],             color: '#e8813a' },
-  { key: 'svc',   name: 'Personal & Protective Service', groups: ['33', '37', '39'], color: '#c39a1c', distributed: true },
+  { key: 'svc',   name: 'Personal & Protective Service', groups: ['33', '37', '39'], color: '#bfb800', distributed: true },
   { key: 'trade', name: 'Skilled Trades & Production',   groups: ['47', '49', '51'], color: '#9c6a3c' },
-  { key: 'trans', name: 'Transportation & Farming',      groups: ['53', '45'],       color: '#4f9d57' },
+  { key: 'trans', name: 'Transportation & Farming',      groups: ['53', '45'],       color: '#3bb974' },
 ] as Omit<Fam, 'rgb'>[]).map((f) => ({ ...f, rgb: [] as number[] }));
 const GROUP2FAM: Record<string, number> = {};
 FAMILIES.forEach((f, i) => f.groups.forEach((g) => (GROUP2FAM[g] = i)));
