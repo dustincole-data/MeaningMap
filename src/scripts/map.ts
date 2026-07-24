@@ -152,9 +152,13 @@ let DPR = Math.min(devicePixelRatio || 1, 2), Vw = 0, Vh = 0, scale = 1, ox = 0,
 const sx = (wx: number) => wx * scale + ox, sy = (wy: number) => wy * scale + oy;
 function resize() { Vw = innerWidth; Vh = innerHeight; map.width = Vw * DPR; map.height = Vh * DPR; fitAll(true); }
 function fitAll(instant?: boolean) {
-  const padL = 64, padR = (panelOpen ? 360 : 64), padT = 110, padB = 140, w = BX1 - BX0, h = BY1 - BY0;
-  const s = Math.min((Vw - padL - padR) / w, (Vh - padT - padB) / h);
-  const nx = padL + (Vw - padL - padR - w * s) / 2 - BX0 * s, ny = padT + (Vh - padT - padB - h * s) / 2 - BY0 * s;
+  // the panel is full-width on mobile, so there is no side strip to reserve there
+  const padL = 64, padR = (panelOpen && !isMobile() ? 360 : 64), padT = 110, padB = 140, w = BX1 - BX0, h = BY1 - BY0;
+  // never let the pads out-measure the viewport: a negative band yields a negative
+  // scale, and pr()'s Math.pow of it is NaN, which kills the whole render loop
+  const availW = Math.max(120, Vw - padL - padR), availH = Math.max(120, Vh - padT - padB);
+  const s = Math.min(availW / w, availH / h);
+  const nx = padL + (availW - w * s) / 2 - BX0 * s, ny = padT + (availH - h * s) / 2 - BY0 * s;
   sFit = s; if (instant) { scale = s; ox = nx; oy = ny; draw(); } else animateTo(s, nx, ny);
 }
 
@@ -302,7 +306,7 @@ function drawLabels(focus: boolean, _contFade: number) {
   shown.forEach((s) => { s.el.style.opacity = String(rf); s.el.style.left = s.x + 'px'; s.el.style.top = s.y + 'px'; });
 
   // point labels
-  const items: { p: Pt; strong: boolean; hover?: boolean; y?: number }[] = [];
+  const items: { p: Pt; strong: boolean; y?: number }[] = [];
   const headerBox = (x: number) => x < 356;   // keep labels out from under the title block (top-left)
   if (focus) {
     // selected pinned; neighbours vertically de-collided so none overlap
@@ -313,9 +317,14 @@ function drawLabels(focus: boolean, _contFade: number) {
     for (let i = 1; i < nbItems.length; i++) { const a = nbItems[i - 1], b = nbItems[i]; if (Math.abs(b.x - a.x) < 130 && b.y - a.y < 17) b.y = a.y + 17; }
     items.push({ p: P[selected], strong: true, y: sy(P[selected].wy) - pr() * 1.7 - 9 });
     nbItems.forEach((it) => items.push(it));
+    // the de-collision cascade below stacks labels 17px apart with no upper bound —
+    // hold them inside the viewport so the tail of a dense stack can't clip off-screen
+    for (const it of items) if (it.y !== undefined) it.y = Math.max(14, Math.min(Vh - 14, it.y));
   } else {
-    if (onboarding && EXEMPLAR >= 0) items.push({ p: P[EXEMPLAR], strong: true }); // label the exemplar so "tap Registered Nurses" is self-evident
-    if (hovered >= 0 && hovered !== EXEMPLAR) items.push({ p: P[hovered], strong: true, hover: true });
+    // The hover tooltip / touch peek callout owns the hovered point's title, so the map
+    // adds no label of its own for it — and the onboarding CTA stands down while hovering.
+    // Two boxes on screen at once (black tip over a leftover white label) was the bug.
+    if (onboarding && EXEMPLAR >= 0 && hovered < 0) items.push({ p: P[EXEMPLAR], strong: true }); // label the exemplar so "tap Registered Nurses" is self-evident
     const cap = Math.max(0, Math.round((scale / sFit - 1.7) * 26));
     if (cap > 0) {
       const cand = P.filter((p) => {
@@ -324,20 +333,22 @@ function drawLabels(focus: boolean, _contFade: number) {
       }).sort((a, b) => (b.jz - a.jz) || (a.wx - b.wx));
       const placed = items.map((it) => ({ x: sx(it.p.wx), y: sy(it.p.wy), hw: 60 }));
       for (const p of cand) {
-        if (items.length >= cap + (hovered >= 0 ? 1 : 0)) break;
+        if (items.length >= cap) break;
         const X = sx(p.wx), Y = sy(p.wy), hw = estHalf(COORDS[p.i].title);
         let ok = true; for (const q of placed) { if (Math.abs(q.x - X) < hw + q.hw && Math.abs(q.y - Y) < 17) { ok = false; break; } }
         if (ok) { placed.push({ x: X, y: Y, hw }); items.push({ p, strong: false }); }
       }
     }
   }
-  while (pool.length < items.length) { const e = document.createElement('div'); e.className = 'plabel'; labels.appendChild(e); pool.push(e); }
+  // same rule inside focus: a hovered neighbour is named by the tooltip, not twice
+  const vis = hovered >= 0 ? items.filter((it) => it.p.i !== hovered) : items;
+  while (pool.length < vis.length) { const e = document.createElement('div'); e.className = 'plabel'; labels.appendChild(e); pool.push(e); }
   pool.forEach((e, i) => {
-    if (i >= items.length) { e.style.display = 'none'; return; }
-    const { p, strong, hover, y } = items[i];
+    if (i >= vis.length) { e.style.display = 'none'; return; }
+    const { p, strong, y } = vis[i];
     e.style.display = 'block'; e.textContent = COORDS[p.i].title;
     e.style.left = sx(p.wx) + 'px'; e.style.top = (y !== undefined ? y : (sy(p.wy) - pr() * (strong ? 1.7 : 1) - 9)) + 'px';
-    e.className = 'plabel' + ((strong || hover || focus) ? ' lead' : '');
+    e.className = 'plabel' + ((strong || focus) ? ' lead' : '');
     e.style.fontWeight = strong ? '700' : '500';
     e.style.color = strong ? 'var(--ink)' : 'var(--ink-soft)';
     e.style.fontSize = strong ? '12.5px' : '11px';
@@ -360,10 +371,18 @@ function select(i: number) {
     // frame bbox of selected + neighbours
     let x0 = P[i].wx, x1 = P[i].wx, y0 = P[i].wy, y1 = P[i].wy;
     for (const ni of NEIGH[i].n) { const p = P[ni]; x0 = Math.min(x0, p.wx); x1 = Math.max(x1, p.wx); y0 = Math.min(y0, p.wy); y1 = Math.max(y1, p.wy); }
-    const w = Math.max(x1 - x0, 60), h = Math.max(y1 - y0, 60), padL = 110, padR = 384, padT = 150, padB = 150;
-    const s = Math.min((Vw - padL - padR) / w, (Vh - padT - padB) / h, sFit * 7);
-    const nx = padL + (Vw - padL - padR - w * s) / 2 - x0 * s, ny = padT + (Vh - padT - padB - h * s) / 2 - y0 * s;
-    animateTo(Math.max(s, sFit * 1.3), nx, ny);
+    // mobile shows the panel full-screen (§6.4), so the map frames into the whole viewport
+    const mob = isMobile();
+    const w = Math.max(x1 - x0, 60), h = Math.max(y1 - y0, 60);
+    const padL = mob ? 28 : 110, padR = mob ? 28 : 384, padT = mob ? 96 : 150, padB = mob ? 96 : 150;
+    // Frame at the scale the cluster actually fits at. A `Math.max(s, sFit * 1.3)` floor
+    // used to be applied to the scale but not to nx/ny, framing for a zoom that was never
+    // used; and for the few neighbour sets that span the map it forced a zoom they cannot
+    // fit into either way. Fitting the bbox keeps all 11 points inside the frame, always.
+    const availW = Math.max(120, Vw - padL - padR), availH = Math.max(120, Vh - padT - padB);
+    const s = Math.min(availW / w, availH / h, sFit * 7);
+    const nx = padL + (availW - w * s) / 2 - x0 * s, ny = padT + (availH - h * s) / 2 - y0 * s;
+    animateTo(s, nx, ny);
   } else { openPanel(false); }
   killOnboarding();
 }
