@@ -84,6 +84,12 @@ for (const p of P) { BX0 = Math.min(BX0, p.wx); BY0 = Math.min(BY0, p.wy); BX1 =
 
 /* ---------- per-family KDE (coherent families only) -> soft fill + crisp coastline ---------- */
 const G = 200, SIG = 6.6;
+// relaxation can push points slightly outside the nominal [0,WORLD] box; the field grid
+// must cover the true point bounds (+ a 3-sigma falloff margin) or a family's density
+// gets cut flat at the box edge instead of fading to zero (2026-07-24 sliced-blob bug)
+const FPAD = 100;
+const FX0 = BX0 - FPAD, FY0 = BY0 - FPAD, FX1 = BX1 + FPAD, FY1 = BY1 + FPAD;
+const FW = FX1 - FX0, FH = FY1 - FY0;
 const fieldCanvas = document.createElement('canvas'); fieldCanvas.width = G; fieldCanvas.height = G;
 const coasts: { f: number; segs: number[][] }[] = [];
 const labelAnchor: ({ wx: number; wy: number; v: number } | null)[] = [];
@@ -95,13 +101,13 @@ const labelAnchor: ({ wx: number; wy: number; v: number } | null)[] = [];
     const a = new Float32Array(G * G);
     for (const p of P) {
       if (p.fam !== f) continue;
-      const cx = p.wx / WORLD * G, cy = p.wy / WORLD * G;
+      const cx = (p.wx - FX0) / FW * G, cy = (p.wy - FY0) / FH * G;
       const x0 = Math.max(0, (cx - rad) | 0), x1 = Math.min(G - 1, (cx + rad) | 0), y0 = Math.max(0, (cy - rad) | 0), y1 = Math.min(G - 1, (cy + rad) | 0);
       for (let gy = y0; gy <= y1; gy++) { const dy = gy + .5 - cy; for (let gx = x0; gx <= x1; gx++) { const dx = gx + .5 - cx; a[gy * G + gx] += Math.exp(-(dx * dx + dy * dy) * inv2s2); } }
     }
     grids[f] = a;
     let mv = 0, mk = 0; for (let k = 0; k < a.length; k++) if (a[k] > mv) { mv = a[k]; mk = k; }
-    labelAnchor[f] = { wx: (mk % G + .5) / G * WORLD, wy: ((mk / G | 0) + .5) / G * WORLD, v: mv };
+    labelAnchor[f] = { wx: (mk % G + .5) / G * FW + FX0, wy: ((mk / G | 0) + .5) / G * FH + FY0, v: mv };
   });
   // argmax fill among coherent families
   const img = new ImageData(G, G); let vmax = 0;
@@ -126,7 +132,7 @@ const labelAnchor: ({ wx: number; wy: number; v: number } | null)[] = [];
     const at = (x: number, y: number) => a[y * G + x];
     const ip = (x0: number, y0: number, v0: number, x1: number, y1: number, v1: number) => {
       const t = (iso - v0) / (v1 - v0 || 1e-6);
-      return [(x0 + (x1 - x0) * t) / G * WORLD, (y0 + (y1 - y0) * t) / G * WORLD];
+      return [(x0 + (x1 - x0) * t) / G * FW + FX0, (y0 + (y1 - y0) * t) / G * FH + FY0];
     };
     for (let y = 0; y < G - 1; y++) for (let x = 0; x < G - 1; x++) {
       if (best[y * G + x] !== f) continue;                 // clip coastline to this family's own territory
@@ -169,14 +175,12 @@ function animateTo(s: number, x: number, y: number, ms = 680) {
   anim = { s0: scale, x0: ox, y0: oy, s, x, y, t0: performance.now(), ms };
 }
 // Started from the go-section (after all module state is initialized — the loop
-// references `breathing`/`onboarding`/`selected`, which are declared below).
+// references `selected`, which is declared below).
 function loop(now: number) {
   if (anim) {
     let t = (now - anim.t0) / anim.ms; if (t > 1) t = 1; const e = 1 - Math.pow(1 - t, 4);
     scale = anim.s0 + (anim.s - anim.s0) * e; ox = anim.x0 + (anim.x - anim.x0) * e; oy = anim.y0 + (anim.y - anim.y0) * e;
     if (t >= 1) anim = null; draw();
-  } else if (breathing && onboarding && selected < 0) {
-    draw(); // keep the exemplar breathing until its one cycle finishes or first interaction
   }
   requestAnimationFrame(loop);
 }
@@ -185,20 +189,9 @@ function loop(now: number) {
 let selected = -1, hovered = -1, activeFam = -1, panelOpen = false;
 const focusSet = new Set<number>();
 
-/* ---------- environment + onboarding ---------- */
-const TOUCH = matchMedia('(pointer:coarse)').matches || 'ontouchstart' in window;
-const reduceMotion = matchMedia('(prefers-reduced-motion:reduce)').matches;
+/* ---------- environment ---------- */
 const isMobile = () => innerWidth <= 760;
-const EXEMPLAR = COORDS.findIndex((c) => c.title === 'Registered Nurses'); // §6.5 validated warm "aha"
-let onboarding = EXEMPLAR >= 0;
-let breathing = onboarding && !reduceMotion;                              // one breath cycle, then still
-const breatheStart = performance.now();
 let peekIdx = -1;                                                          // touch two-stage: peeked, not yet committed
-function killOnboarding() {
-  if (!onboarding) return;
-  onboarding = false; breathing = false;
-  (document.getElementById('hint') as HTMLElement).style.opacity = '0';
-}
 
 /* ---------- draw ---------- */
 const PR = 3.1;                              // base point screen radius
@@ -214,7 +207,7 @@ function draw() {
     ctx.globalAlpha = contFade * (activeFam >= 0 ? 0.5 : 1);
     ctx.setTransform(DPR * scale, 0, 0, DPR * scale, DPR * ox, DPR * oy);
     ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(fieldCanvas, 0, 0, G, G, 0, 0, WORLD, WORLD);
+    ctx.drawImage(fieldCanvas, 0, 0, G, G, FX0, FY0, FW, FH);
     ctx.restore();
     ctx.save(); ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
     for (const c of coasts) {
@@ -264,23 +257,6 @@ function draw() {
     }
   }
 
-  // onboarding: the exemplar (Registered Nurses) breathes once, then holds a soft ring
-  if (onboarding && selected < 0 && EXEMPLAR >= 0) {
-    const p = P[EXEMPLAR], X = sx(p.wx), Y = sy(p.wy), c = FAMILIES[p.fam].rgb, base = pr();
-    let rad = base * 2.2, alpha = 0.5;
-    if (!reduceMotion) {
-      const dt = performance.now() - breatheStart;
-      if (dt > 1700) breathing = false;            // one cycle, capped (not a generic shimmer)
-      const t = Math.min(dt, 1700) / 1700;
-      rad = base * (1.6 + t * 3.0); alpha = 0.55 * (1 - t);
-    }
-    ctx.beginPath(); ctx.arc(X, Y, rad, 0, 7);
-    ctx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${alpha})`; ctx.lineWidth = 2; ctx.stroke();
-    // keep the dot itself findable after the pulse
-    ctx.beginPath(); ctx.arc(X, Y, base * 1.35, 0, 7); ctx.fillStyle = `rgb(${c[0]},${c[1]},${c[2]})`; ctx.fill();
-    ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.stroke();
-  }
-
   drawLabels(focus, contFade);
 }
 
@@ -322,9 +298,8 @@ function drawLabels(focus: boolean, _contFade: number) {
     for (const it of items) if (it.y !== undefined) it.y = Math.max(14, Math.min(Vh - 14, it.y));
   } else {
     // The hover tooltip / touch peek callout owns the hovered point's title, so the map
-    // adds no label of its own for it — and the onboarding CTA stands down while hovering.
-    // Two boxes on screen at once (black tip over a leftover white label) was the bug.
-    if (onboarding && EXEMPLAR >= 0 && hovered < 0) items.push({ p: P[EXEMPLAR], strong: true }); // label the exemplar so "tap Registered Nurses" is self-evident
+    // adds no label of its own for it. Two boxes on screen at once (black tip over a
+    // leftover white label) was the bug.
     const cap = Math.max(0, Math.round((scale / sFit - 1.7) * 26));
     if (cap > 0) {
       const cand = P.filter((p) => {
@@ -384,7 +359,6 @@ function select(i: number) {
     const nx = padL + (availW - w * s) / 2 - x0 * s, ny = padT + (availH - h * s) / 2 - y0 * s;
     animateTo(s, nx, ny);
   } else { openPanel(false); }
-  killOnboarding();
 }
 
 /* ---------- info panel ---------- */
@@ -447,7 +421,6 @@ let pinch: { d: number; mx: number; my: number } | null = null;
 const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
 
 stage.addEventListener('pointerdown', (e) => {
-  killOnboarding();
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   // set gesture state BEFORE capturing so a capture failure can't abort pinch setup
   if (pointers.size === 1) { drag = true; moved = false; lx = e.clientX; ly = e.clientY; stage.classList.add('grabbing'); pinch = null; }
@@ -494,7 +467,7 @@ function endPointer(e: PointerEvent) {
 stage.addEventListener('pointerup', endPointer);
 stage.addEventListener('pointercancel', endPointer);
 stage.addEventListener('wheel', (e) => {
-  e.preventDefault(); anim = null; killOnboarding(); hidePeek();
+  e.preventDefault(); anim = null; hidePeek();
   const f = Math.exp(-e.deltaY * 0.0016), ns = Math.min(sFit * 9, Math.max(sFit * 0.7, scale * f)), k = ns / scale;
   ox = e.clientX - (e.clientX - ox) * k; oy = e.clientY - (e.clientY - oy) * k; scale = ns; draw();
 }, { passive: false });
@@ -548,10 +521,7 @@ addEventListener('resize', () => { DPR = Math.min(devicePixelRatio || 1, 2); res
 }
 
 /* ---------- go ---------- */
-const hintEl = document.getElementById('hint') as HTMLElement;
-if (onboarding) hintEl.textContent = (TOUCH ? 'Tap ' : 'Click ') + 'Registered Nurses to see the jobs most like it';
 resize();
 requestAnimationFrame(loop);                            // start the render loop now that all state is initialized
 requestAnimationFrame(() => map.classList.add('in'));   // canvas fades in over paper + wordmark (§6.6)
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => draw());
-setTimeout(() => { if (onboarding && selected < 0) hintEl.style.opacity = '0.92'; }, 500); // self-kills on first interaction
