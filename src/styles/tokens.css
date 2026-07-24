@@ -1,0 +1,15 @@
+/* Design tokens — calm editorial "paper" chrome (Stefaner-tier), colorful data
+   graphics carry the page. Type is small grotesque sans (Archivo), never serif,
+   never a giant display hero. */
+:root {
+  --paper:      oklch(0.973 0.006 95);
+  --paper-edge: oklch(0.945 0.010 95);
+  --ink:        oklch(0.26 0.020 265);
+  --ink-soft:   oklch(0.42 0.018 265);
+  --ink-faint:  oklch(0.57 0.012 265);
+  --hair:       oklch(0.26 0.02 265 / 0.13);
+  --panel:      oklch(0.992 0.003 95 / 0.90);
+  --shadow:     oklch(0.26 0.03 265 / 0.12);
+  --sans: "Archivo", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --narrow: "Archivo Narrow", var(--sans);
+}

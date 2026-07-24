@@ -1,0 +1,42 @@
+---
+import '../styles/global.css';
+interface Props { title?: string; description?: string; }
+const {
+  title = 'Meaning Map — a crafted atlas of American work',
+  description =
+    'A crafted, readable atlas of 893 US occupations placed by what the work actually ' +
+    'involves. Neighbours do similar work — click any job to find the ones most like it. ' +
+    'Real O*NET + BLS data, no server, no model shipped.',
+} = Astro.props as Props;
+const og = new URL('og/cover.png', Astro.site).href;
+const canonical = Astro.site?.href;
+---
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{title}</title>
+  <meta name="description" content={description} />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  {canonical && <link rel="canonical" href={canonical} />}
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content={title} />
+  <meta property="og:description" content={description} />
+  <meta property="og:image" content={og} />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="preload" href="/fonts/archivo-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/fonts/archivo-narrow-700.woff2" as="font" type="font/woff2" crossorigin />
+</head>
+<body>
+  <slot />
+  <noscript>
+    <div style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;text-align:center;padding:32px;background:radial-gradient(130% 130% at 50% 40%, #f6f5f0 52%, #ecebe4 100%);font-family:system-ui,'Segoe UI',sans-serif;color:#2b2f3a;">
+      <h1 style="font-size:20px;font-weight:700;margin:0;">Meaning Map — a crafted atlas of American work</h1>
+      <img src="/og/cover.png" alt="A map of 893 US occupations arranged so that similar jobs sit near each other, coloured by occupation family."
+           style="max-width:min(760px,92vw);width:100%;height:auto;border-radius:10px;box-shadow:0 12px 40px -20px rgba(40,44,60,.35);" />
+      <p style="font-size:13px;color:#5a5f6e;margin:0;">The interactive map needs JavaScript.</p>
+    </div>
+  </noscript>
+</body>
+</html>

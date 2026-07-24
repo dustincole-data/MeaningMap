@@ -1,0 +1,23 @@
+# deps + build
+node_modules/
+dist/
+.astro/
+
+# local data-pipeline raw downloads (BLS OEWS zip/xlsx) — NOT the computed output.
+# src/data/*.json IS committed (build is hermetic, no fetch) — do not ignore it.
+pipeline/raw/
+# large regeneratable intermediate (embedding text; rebuilt by build_corpus.py).
+# emb_*.npy IS committed as the verify anchor; corpus.jsonl is not needed to ship.
+pipeline/corpus.jsonl
+
+# tooling / secrets
+.vercel
+.env*
+
+# agent + planning scratch (local only)
+.claude/
+.scratch/
+
+# python
+__pycache__/
+*.pyc

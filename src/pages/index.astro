@@ -1,0 +1,61 @@
+---
+import Base from '../layouts/Base.astro';
+---
+<Base>
+  <div id="stage">
+    <canvas id="map" aria-hidden="true"></canvas>
+    <div id="labels" aria-hidden="true"></div>
+  </div>
+
+  <p class="sr-only">
+    Meaning Map is an interactive atlas of 893 US occupations, arranged by an AI reading of
+    what each job actually involves so that similar jobs sit near each other, and coloured by
+    occupation family. To explore without the map, use the search box to find an occupation;
+    selecting one lists the jobs most similar to it, ranked by similarity.
+  </p>
+
+  <header id="head">
+    <h1><span class="dot"></span>Meaning&nbsp;Map</h1>
+    <p>A crafted atlas of American work — 893 occupations placed by what the job actually involves.
+       Neighbours do similar work. Click any point to find jobs like it.</p>
+  </header>
+
+  <div id="search" role="search">
+    <div class="box">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      <input id="q" type="text" placeholder="Find an occupation…" autocomplete="off" spellcheck="false" aria-label="Find an occupation" />
+    </div>
+    <div id="results" role="listbox" aria-label="Search results"></div>
+  </div>
+
+  <div id="legend"><div class="lg-title">Occupation families</div></div>
+
+  <div id="foot">
+    <div id="helper">
+      <span class="k"><span class="arrow"></span> <b>near&nbsp;=&nbsp;similar work</b></span>
+      <span class="k">colour = family</span>
+    </div>
+    <div id="source">
+      <b>Occupation data:</b> O*NET&nbsp;30.3 (US&nbsp;DOL/ETA, CC&nbsp;BY&nbsp;4.0) · <b>Wage&nbsp;&amp;&nbsp;employment:</b> BLS&nbsp;OEWS<br>
+      893 occupations · text embeddings <b>bge-small-en-v1.5</b> · 2-D projection via <b>UMAP</b>
+    </div>
+  </div>
+
+  <div id="tip" role="status" aria-live="polite"></div>
+  <div id="hint"></div>
+
+  <aside id="panel" aria-label="Occupation detail">
+    <button class="close" aria-label="Close detail panel">✕</button>
+    <span class="fam-tag"><i></i><span class="ft-name"></span></span>
+    <h2></h2>
+    <div class="code"></div>
+    <div class="meta"></div>
+    <div class="desc"></div>
+    <div class="nb-h"><b>Jobs like this</b><span>nearest by what the work involves</span></div>
+    <div id="nbs"></div>
+  </aside>
+
+  <script>
+    import '../scripts/map.ts';
+  </script>
+</Base>
