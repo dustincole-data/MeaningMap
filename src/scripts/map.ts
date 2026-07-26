@@ -655,3 +655,44 @@ if (import.meta.env.DEV) (window as any).__mm = {
   draw, bounds: [BX0, BY0, BX1, BY1],
   get view() { return { scale, sFit, Vw, Vh, ox, oy, mobile: isMobile() }; },
 };
+
+/* ---------- ?debug=1 viewport probe (TEMPORARY — remove once the iOS tap-drift bug is root-caused) ----
+   `pick()` compares e.clientX/Y straight against sx()/sy(), which assumes the canvas box is
+   exactly Vw x Vh at client (0,0). Vw/Vh are only refreshed on window's `resize`. On iOS Safari
+   the URL bar, the keyboard and scroll-chaining out of #nbs can all move the viewport, and the
+   report is that taps start landing on dots ABOVE the finger and stay wrong until reload.
+   This badge shows, live, whether that assumption is currently violated — one screenshot at the
+   moment of failure identifies which term drifted. */
+if (new URLSearchParams(location.search).has('debug')) {
+  const dbg = document.createElement('pre');
+  dbg.id = 'dbg';
+  dbg.style.cssText = 'position:fixed;left:6px;top:6px;z-index:99;margin:0;padding:6px 8px;' +
+    'font:600 10px/1.35 ui-monospace,monospace;background:rgba(255,255,255,.94);color:#111;' +
+    'border:2px solid #2a2;border-radius:8px;pointer-events:none;white-space:pre;max-width:92vw;';
+  document.body.appendChild(dbg);
+  let tap = 'tap  —';
+  addEventListener('pointerdown', (e) => {
+    const r = map.getBoundingClientRect();
+    const i = pick(e.clientX - r.left, e.clientY - r.top, e.pointerType === 'touch');
+    const j = pick(e.clientX, e.clientY, e.pointerType === 'touch');   // what the app actually does
+    tap = `tap  c=${e.clientX.toFixed(0)},${e.clientY.toFixed(0)}  app#${j} rect#${i}` +
+      (i !== j ? '  <<< MISMATCH' : '');
+  }, true);
+  const fmt = (n: number) => (Math.round(n * 10) / 10).toString();
+  setInterval(() => {
+    const r = map.getBoundingClientRect(), vv = visualViewport;
+    // the invariant pick() depends on
+    const bad = Math.abs(r.top) > 0.5 || Math.abs(r.left) > 0.5
+      || Math.abs(r.width - Vw) > 1 || Math.abs(r.height - Vh) > 1;
+    dbg.style.borderColor = bad ? '#c00' : '#2a2';
+    dbg.textContent = [
+      `app  Vw=${fmt(Vw)} Vh=${fmt(Vh)} dpr=${DPR}`,
+      `rect t=${fmt(r.top)} l=${fmt(r.left)} w=${fmt(r.width)} h=${fmt(r.height)}${bad ? '  <<< DRIFT' : ''}`,
+      `cli  w=${map.clientWidth} h=${map.clientHeight}  buf=${map.width}x${map.height}`,
+      `vv   off=${fmt(vv?.offsetLeft ?? -1)},${fmt(vv?.offsetTop ?? -1)} pg=${fmt(vv?.pageTop ?? -1)} ` +
+        `s=${fmt(vv?.scale ?? -1)} ${fmt(vv?.width ?? -1)}x${fmt(vv?.height ?? -1)}`,
+      `win  inner=${innerWidth}x${innerHeight} scroll=${fmt(scrollX)},${fmt(scrollY)} doc=${document.documentElement.clientWidth}x${document.documentElement.clientHeight}`,
+      tap,
+    ].join('\n');
+  }, 250);
+}
