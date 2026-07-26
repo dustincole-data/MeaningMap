@@ -144,7 +144,10 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
 #panel .nb-h { display: flex; align-items: baseline; gap: 8px; margin: 20px 0 8px; padding-top: 16px; border-top: 1px solid var(--hair); }
 #panel .nb-h b { font-size: 13px; font-weight: 600; }
 #panel .nb-h span { font-size: 11px; color: var(--ink-faint); }
-#nbs { overflow: auto; margin: 0 -6px; flex: 1; }
+/* `contain`: over-scrolling the list must not chain to the document. The page itself never
+   scrolls, but iOS reads the chained gesture as one and toggles the URL bar — which resizes the
+   fixed canvas underneath the sheet (see the ResizeObserver in map.ts). Stop it at the source. */
+#nbs { overflow: auto; overscroll-behavior: contain; margin: 0 -6px; flex: 1; }
 .nb {
   display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; border: 0; background: none; padding: 8px 6px;
   min-height: 44px; border-radius: 8px; cursor: pointer; font-family: var(--sans);

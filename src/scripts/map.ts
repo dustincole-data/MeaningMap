@@ -689,6 +689,18 @@ function closePanel() { select(-1); fitAll(false); }
 (document.querySelector('#panel .close') as HTMLButtonElement).onclick = closePanel;
 addEventListener('keydown', (e) => { if (e.key === 'Escape') closePanel(); });
 addEventListener('resize', () => { DPR = Math.min(devicePixelRatio || 1, 2); resize(); syncClamps(); });
+/* The canvas box is `position:fixed; inset:0`, so iOS Safari resizes it whenever the URL bar
+   collapses or expands — and that does not reliably fire window's `resize`. Vw/Vh would stay
+   stale, the Vh*DPR-tall buffer would be squashed into a shorter box, and every dot would render
+   above where sy() puts it while pick() still compares raw clientY against sy(): taps land on the
+   dot ABOVE the finger, and only a reload clears it (ticket 06 #2). Observe the box itself rather
+   than guessing which event a platform fires, and re-sync WITHOUT re-framing — fitAll() here would
+   throw away the reader's pan and zoom every time the URL bar moved. */
+new ResizeObserver(() => {
+  const w = vpW(), h = vpH();
+  if (Math.abs(w - Vw) < 0.5 && Math.abs(h - Vh) < 0.5) return;
+  Vw = w; Vh = h; map.width = Vw * DPR; map.height = Vh * DPR; invalidate();
+}).observe(map);
 // whether the copy overflows depends on the width it is measured at, so re-test on every
 // breakpoint change: the control must appear on a phone and disappear on a desktop.
 function syncClamps() { document.querySelectorAll<HTMLElement>('.clamp-wrap').forEach((w) => syncClamp(w, w.classList.contains('open'))); layoutHead(); }
@@ -719,44 +731,3 @@ if (import.meta.env.DEV) (window as any).__mm = {
   get view() { return { scale, sFit, Vw, Vh, ox, oy, mobile: isMobile() }; },
   screenOf: (i: number) => ({ x: sx(P[i].wx), y: sy(P[i].wy) }),   // lets a test tap an actual dot
 };
-
-/* ---------- ?debug=1 viewport probe (TEMPORARY — remove once the iOS tap-drift bug is root-caused) ----
-   `pick()` compares e.clientX/Y straight against sx()/sy(), which assumes the canvas box is
-   exactly Vw x Vh at client (0,0). Vw/Vh are only refreshed on window's `resize`. On iOS Safari
-   the URL bar, the keyboard and scroll-chaining out of #nbs can all move the viewport, and the
-   report is that taps start landing on dots ABOVE the finger and stay wrong until reload.
-   This badge shows, live, whether that assumption is currently violated — one screenshot at the
-   moment of failure identifies which term drifted. */
-if (new URLSearchParams(location.search).has('debug')) {
-  const dbg = document.createElement('pre');
-  dbg.id = 'dbg';
-  dbg.style.cssText = 'position:fixed;left:6px;top:6px;z-index:99;margin:0;padding:6px 8px;' +
-    'font:600 10px/1.35 ui-monospace,monospace;background:rgba(255,255,255,.94);color:#111;' +
-    'border:2px solid #2a2;border-radius:8px;pointer-events:none;white-space:pre;max-width:92vw;';
-  document.body.appendChild(dbg);
-  let tap = 'tap  —';
-  addEventListener('pointerdown', (e) => {
-    const r = map.getBoundingClientRect();
-    const i = pick(e.clientX - r.left, e.clientY - r.top, e.pointerType === 'touch');
-    const j = pick(e.clientX, e.clientY, e.pointerType === 'touch');   // what the app actually does
-    tap = `tap  c=${e.clientX.toFixed(0)},${e.clientY.toFixed(0)}  app#${j} rect#${i}` +
-      (i !== j ? '  <<< MISMATCH' : '');
-  }, true);
-  const fmt = (n: number) => (Math.round(n * 10) / 10).toString();
-  setInterval(() => {
-    const r = map.getBoundingClientRect(), vv = visualViewport;
-    // the invariant pick() depends on
-    const bad = Math.abs(r.top) > 0.5 || Math.abs(r.left) > 0.5
-      || Math.abs(r.width - Vw) > 1 || Math.abs(r.height - Vh) > 1;
-    dbg.style.borderColor = bad ? '#c00' : '#2a2';
-    dbg.textContent = [
-      `app  Vw=${fmt(Vw)} Vh=${fmt(Vh)} dpr=${DPR}`,
-      `rect t=${fmt(r.top)} l=${fmt(r.left)} w=${fmt(r.width)} h=${fmt(r.height)}${bad ? '  <<< DRIFT' : ''}`,
-      `cli  w=${map.clientWidth} h=${map.clientHeight}  buf=${map.width}x${map.height}`,
-      `vv   off=${fmt(vv?.offsetLeft ?? -1)},${fmt(vv?.offsetTop ?? -1)} pg=${fmt(vv?.pageTop ?? -1)} ` +
-        `s=${fmt(vv?.scale ?? -1)} ${fmt(vv?.width ?? -1)}x${fmt(vv?.height ?? -1)}`,
-      `win  inner=${innerWidth}x${innerHeight} scroll=${fmt(scrollX)},${fmt(scrollY)} doc=${document.documentElement.clientWidth}x${document.documentElement.clientHeight}`,
-      tap,
-    ].join('\n');
-  }, 250);
-}
