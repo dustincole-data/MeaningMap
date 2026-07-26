@@ -23,18 +23,21 @@ const NEIGH = neighData as unknown as Nbr[];
 const N = COORDS.length;
 
 /* ---------- families: 22 SOC -> 10 hues; distributed = interleaving (02 finding) ---------- */
-interface Fam { key: string; name: string; groups: string[]; color: string; distributed?: boolean; rgb: number[]; }
+// `short` is the phone name: at 390 px the full names overrun the screen (a 13px tracked
+// "TRANSPORTATION & FARMING" is ~330 px wide), and the region labels are the only colour key
+// a phone gets — an unreadable key is no key.
+interface Fam { key: string; name: string; short: string; groups: string[]; color: string; distributed?: boolean; rgb: number[]; }
 const FAMILIES: Fam[] = ([
-  { key: 'stem',  name: 'Science, Tech & Engineering',  groups: ['15', '17', '19'], color: '#2f6fc4' },
-  { key: 'edu',   name: 'Education, Law & Social',       groups: ['21', '23', '25'], color: '#12867a' },
-  { key: 'health',name: 'Healthcare',                    groups: ['29', '31'],       color: '#d8474d' },
-  { key: 'arts',  name: 'Arts & Media',                  groups: ['27'],             color: '#c94f9a' },
-  { key: 'sales', name: 'Sales & Office',                groups: ['41', '43'],       color: '#a575e8', distributed: true },
-  { key: 'mgmt',  name: 'Management & Business',         groups: ['11', '13'],       color: '#73b0ee', distributed: true },
-  { key: 'food',  name: 'Food & Hospitality',           groups: ['35'],             color: '#e8813a' },
-  { key: 'svc',   name: 'Personal & Protective Service', groups: ['33', '37', '39'], color: '#bfb800', distributed: true },
-  { key: 'trade', name: 'Skilled Trades & Production',   groups: ['47', '49', '51'], color: '#9c6a3c' },
-  { key: 'trans', name: 'Transportation & Farming',      groups: ['53', '45'],       color: '#3bb974' },
+  { key: 'stem',  name: 'Science, Tech & Engineering',  short: 'Science & Tech',   groups: ['15', '17', '19'], color: '#2f6fc4' },
+  { key: 'edu',   name: 'Education, Law & Social',       short: 'Education & Law', groups: ['21', '23', '25'], color: '#12867a' },
+  { key: 'health',name: 'Healthcare',                    short: 'Healthcare',      groups: ['29', '31'],       color: '#d8474d' },
+  { key: 'arts',  name: 'Arts & Media',                  short: 'Arts & Media',    groups: ['27'],             color: '#c94f9a' },
+  { key: 'sales', name: 'Sales & Office',                short: 'Sales & Office',  groups: ['41', '43'],       color: '#a575e8', distributed: true },
+  { key: 'mgmt',  name: 'Management & Business',         short: 'Management',      groups: ['11', '13'],       color: '#73b0ee', distributed: true },
+  { key: 'food',  name: 'Food & Hospitality',           short: 'Food & Hotels',   groups: ['35'],             color: '#e8813a' },
+  { key: 'svc',   name: 'Personal & Protective Service', short: 'Service',         groups: ['33', '37', '39'], color: '#bfb800', distributed: true },
+  { key: 'trade', name: 'Skilled Trades & Production',   short: 'Trades',          groups: ['47', '49', '51'], color: '#9c6a3c' },
+  { key: 'trans', name: 'Transportation & Farming',      short: 'Transport & Farm',groups: ['53', '45'],       color: '#3bb974' },
 ] as Omit<Fam, 'rgb'>[]).map((f) => ({ ...f, rgb: [] as number[] }));
 const GROUP2FAM: Record<string, number> = {};
 FAMILIES.forEach((f, i) => f.groups.forEach((g) => (GROUP2FAM[g] = i)));
@@ -152,36 +155,59 @@ const labelAnchor: ({ wx: number; wy: number; v: number } | null)[] = [];
   });
 })();
 
+// one Path2D per family coastline, in world coords — built once, stroked under the view transform
+const coastPath = coasts.map((c) => {
+  const p = new Path2D();
+  for (const s of c.segs) { p.moveTo(s[0], s[1]); p.lineTo(s[2], s[3]); }
+  return p;
+});
+
 /* ---------- canvas + view ---------- */
 const map = document.getElementById('map') as HTMLCanvasElement, ctx = map.getContext('2d')!, labels = document.getElementById('labels')!;
 let DPR = Math.min(devicePixelRatio || 1, 2), Vw = 0, Vh = 0, scale = 1, ox = 0, oy = 0, sFit = 1;
 const sx = (wx: number) => wx * scale + ox, sy = (wy: number) => wy * scale + oy;
-function resize() { Vw = innerWidth; Vh = innerHeight; map.width = Vw * DPR; map.height = Vh * DPR; fitAll(true); }
+/* Viewport size — never `innerWidth`. Any element parked off-screen (the panel used to be)
+   widens the page, and mobile Chrome then reports the min-scale viewport: 780 at a 390 device.
+   That lie quadrupled the canvas and framed the atlas off the visible screen (ticket 04 #2).
+   The canvas box itself is the ground truth; documentElement/visualViewport are the fallbacks. */
+const vpW = () => map.clientWidth || (visualViewport?.width ?? 0) || document.documentElement.clientWidth;
+const vpH = () => map.clientHeight || (visualViewport?.height ?? 0) || document.documentElement.clientHeight;
+function resize() { Vw = vpW(); Vh = vpH(); map.width = Vw * DPR; map.height = Vh * DPR; fitAll(true); }
 function fitAll(instant?: boolean) {
-  // the panel is full-width on mobile, so there is no side strip to reserve there
-  const padL = 64, padR = (panelOpen && !isMobile() ? 360 : 64), padT = 110, padB = 140, w = BX1 - BX0, h = BY1 - BY0;
+  // Phone: the atlas is width-constrained on a portrait screen, so reserving bands for the
+  // header and the key would shrink the map without buying anything — the leftover space
+  // ABOVE and BELOW the fitted atlas is exactly where that chrome sits. Fit edge-to-edge and
+  // let the chrome float in the gap (ticket 05). Desktop keeps its editorial margins.
+  const mob = isMobile();
+  const padL = mob ? 10 : 64, padR = mob ? 10 : (panelOpen ? 360 : 64), padT = mob ? 10 : 110,
+    padB = mob ? 10 : 140, w = BX1 - BX0, h = BY1 - BY0;
   // never let the pads out-measure the viewport: a negative band yields a negative
   // scale, and pr()'s Math.pow of it is NaN, which kills the whole render loop
   const availW = Math.max(120, Vw - padL - padR), availH = Math.max(120, Vh - padT - padB);
   const s = Math.min(availW / w, availH / h);
   const nx = padL + (availW - w * s) / 2 - BX0 * s, ny = padT + (availH - h * s) / 2 - BY0 * s;
-  sFit = s; if (instant) { scale = s; ox = nx; oy = ny; draw(); } else animateTo(s, nx, ny);
+  sFit = s; if (instant) { scale = s; ox = nx; oy = ny; invalidate(); } else animateTo(s, nx, ny);
 }
 
 /* ---------- animation ---------- */
 let anim: { s0: number; x0: number; y0: number; s: number; x: number; y: number; t0: number; ms: number } | null = null;
 function animateTo(s: number, x: number, y: number, ms = 680) {
-  if (matchMedia('(prefers-reduced-motion:reduce)').matches) { scale = s; ox = x; oy = y; draw(); return; }
+  if (matchMedia('(prefers-reduced-motion:reduce)').matches) { scale = s; ox = x; oy = y; invalidate(); return; }
   anim = { s0: scale, x0: ox, y0: oy, s, x, y, t0: performance.now(), ms };
 }
 // Started from the go-section (after all module state is initialized — the loop
 // references `selected`, which is declared below).
+// Every interaction marks the view dirty; the loop draws at most once per frame. Drawing
+// inline in pointermove queued input behind draws and drew 2–3× per pinch frame (ticket 04 #3).
+let dirty = false;
+const invalidate = () => { dirty = true; };
 function loop(now: number) {
   if (anim) {
     let t = (now - anim.t0) / anim.ms; if (t > 1) t = 1; const e = 1 - Math.pow(1 - t, 4);
     scale = anim.s0 + (anim.s - anim.s0) * e; ox = anim.x0 + (anim.x - anim.x0) * e; oy = anim.y0 + (anim.y - anim.y0) * e;
-    if (t >= 1) anim = null; draw();
+    if (t >= 1) anim = null; dirty = true;
   }
+  if (dirty) { dirty = false; draw(); }
   requestAnimationFrame(loop);
 }
 
@@ -190,12 +216,35 @@ let selected = -1, hovered = -1, activeFam = -1, panelOpen = false;
 const focusSet = new Set<number>();
 
 /* ---------- environment ---------- */
-const isMobile = () => innerWidth <= 760;
+const isMobile = () => vpW() <= 760;      // vpW(), not innerWidth — see resize()
 let peekIdx = -1;                                                          // touch two-stage: peeked, not yet committed
 
 /* ---------- draw ---------- */
 const PR = 3.1;                              // base point screen radius
 function pr() { return Math.max(2.6, Math.min(6.5, PR * Math.pow(scale / sFit, 0.28))); }
+
+/* One halo sprite per family, baked once — no more `createRadialGradient` per point per frame.
+   Ambient halos are the glow that makes the atlas feel lit, and they are the one effect that
+   costs a draw call PER POINT, which is what a phone cannot afford. Measured at 4× CPU with
+   893 points: ~11 ms as per-point gradients (ticket 04 #3), still ~8–15 ms as pre-baked
+   sprites — the cost is the 893 calls, not the pixels, so no cheaper sprite rescues it.
+   So the glow is spent from a point budget and fades out where the field is dense — which is
+   fit view, where the continent wash already carries the colour and 893 overlapping halos
+   blur into an undifferentiated haze anyway. Zoom in, the field thins, the glow comes back.
+   The focus set (selected + its 10 neighbours) always keeps its halo: 11 calls cost nothing. */
+const HALO_R = 12, HALO_FULL = 150, HALO_NONE = 320;
+// reused per-frame scratch: screen coords bucketed by family × muted, plus the focus set
+const buck = FAMILIES.flatMap(() => [new Float32Array(N * 2), new Float32Array(N * 2)]);
+const bCount = new Int32Array(FAMILIES.length * 2);
+const special: Pt[] = [];
+const haloSprite = FAMILIES.map((F) => {
+  const c = document.createElement('canvas'); c.width = c.height = HALO_R * 2;
+  const g = c.getContext('2d')!;
+  const gr = g.createRadialGradient(HALO_R, HALO_R, 0, HALO_R, HALO_R, HALO_R);
+  gr.addColorStop(0, `rgba(${F.rgb[0]},${F.rgb[1]},${F.rgb[2]},1)`);
+  gr.addColorStop(1, `rgba(${F.rgb[0]},${F.rgb[1]},${F.rgb[2]},0)`);
+  g.fillStyle = gr; g.fillRect(0, 0, HALO_R * 2, HALO_R * 2); return c;
+});
 function draw() {
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.clearRect(0, 0, Vw, Vh);
   const r = pr(), focus = selected >= 0;
@@ -206,17 +255,16 @@ function draw() {
     ctx.save();
     ctx.globalAlpha = contFade * (activeFam >= 0 ? 0.5 : 1);
     ctx.setTransform(DPR * scale, 0, 0, DPR * scale, DPR * ox, DPR * oy);
-    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'low';
     ctx.drawImage(fieldCanvas, 0, 0, G, G, FX0, FY0, FW, FH);
-    ctx.restore();
-    ctx.save(); ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-    for (const c of coasts) {
-      if (activeFam >= 0 && activeFam !== c.f) continue;
+    // coastlines: cached world-space paths stroked under the same transform. Re-projecting
+    // 1,386 segments into screen space every frame cost 3.5 ms of the phone's frame budget.
+    ctx.lineWidth = 1.1 / scale;
+    for (let k = 0; k < coastPath.length; k++) {
+      const c = coasts[k]; if (activeFam >= 0 && activeFam !== c.f) continue;
       const col = FAMILIES[c.f].rgb;
       ctx.strokeStyle = `rgba(${col[0]},${col[1]},${col[2]},${0.34 * contFade})`;
-      ctx.lineWidth = 1.1; ctx.beginPath();
-      for (const s of c.segs) { ctx.moveTo(sx(s[0]), sy(s[1])); ctx.lineTo(sx(s[2]), sy(s[3])); }
-      ctx.stroke();
+      ctx.stroke(coastPath[k]);
     }
     ctx.restore();
   }
@@ -231,29 +279,71 @@ function draw() {
     }
   }
 
-  // points: halo pass then core pass
-  for (let pass = 0; pass < 2; pass++) {
-    for (const p of P) {
-      const X = sx(p.wx), Y = sy(p.wy);
-      if (!(X > -30 && X < Vw + 30 && Y > -30 && Y < Vh + 30)) continue; // cull off-screen AND reject non-finite (never feed NaN to createRadialGradient)
-      const isSel = p.i === selected, isNb = focusSet.has(p.i), isHov = p.i === hovered;
-      const muted = (focus && !isSel && !isNb) || (activeFam >= 0 && p.fam !== activeFam);
-      const rr = r * (isSel ? 1.7 : isNb ? 1.25 : 1) * (isHov ? 1.4 : 1);
-      const c = FAMILIES[p.fam].rgb;
-      if (pass === 0) { // halo
-        const ha = muted ? 0.0 : (isSel ? 0.42 : isNb ? 0.34 : 0.16);
-        if (ha <= 0) continue;
-        const g = ctx.createRadialGradient(X, Y, 0, X, Y, rr * 2.6);
-        g.addColorStop(0, `rgba(${c[0]},${c[1]},${c[2]},${ha})`); g.addColorStop(1, `rgba(${c[0]},${c[1]},${c[2]},0)`);
-        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(X, Y, rr * 2.6, 0, 7); ctx.fill();
-      } else {      // core
-        ctx.globalAlpha = muted ? 0.14 : 1;
-        ctx.beginPath(); ctx.arc(X, Y, rr, 0, 7); ctx.fillStyle = `rgb(${c[0]},${c[1]},${c[2]})`; ctx.fill();
-        ctx.globalAlpha = muted ? 0.10 : 0.9; ctx.lineWidth = isSel ? 2 : 1;
-        ctx.strokeStyle = isSel ? '#fff' : `rgba(255,255,255,0.6)`; ctx.stroke();
-        ctx.globalAlpha = 1;
-        if (isSel) { ctx.beginPath(); ctx.arc(X, Y, rr + 4, 0, 7); ctx.strokeStyle = `rgb(${c[0]},${c[1]},${c[2]})`; ctx.lineWidth = 1.5; ctx.stroke(); }
-      }
+  // Points. Ordinary points are bucketed by family + muted state and drawn as ONE path per
+  // bucket (≤20 canvas ops instead of 893×4); only the focus set — selected, its neighbours,
+  // the hovered dot — is drawn individually, because only those vary in size and weight.
+  // Buffers are module-level and reused: a pan redraws ~60 times a second, and per-frame
+  // allocation was showing up as GC jitter in the frame times.
+  const NF = FAMILIES.length;
+  special.length = 0; bCount.fill(0);
+  let plain = 0;
+  for (const p of P) {
+    const X = sx(p.wx), Y = sy(p.wy);
+    if (!(X > -30 && X < Vw + 30 && Y > -30 && Y < Vh + 30)) continue; // cull off-screen AND reject non-finite (never feed NaN to the transform)
+    if (p.i === selected || p.i === hovered || focusSet.has(p.i)) { special.push(p); continue; }
+    const muted = focus || (activeFam >= 0 && p.fam !== activeFam);
+    const k = p.fam * 2 + (muted ? 1 : 0), a = buck[k], n = bCount[k];
+    a[n] = X; a[n + 1] = Y; bCount[k] = n + 2; plain++;
+  }
+
+  // halo pass — ambient glow first, focus-set halos on top
+  const spend = (HALO_NONE - plain) / (HALO_NONE - HALO_FULL);
+  const ambientA = 0.16 * (spend < 0 ? 0 : spend > 1 ? 1 : spend);
+  if (ambientA > 0.004) {
+    const HR = r * 2.6;
+    ctx.globalAlpha = ambientA;
+    for (let f = 0; f < NF; f++) {
+      const a = buck[f * 2], n = bCount[f * 2]; if (!n) continue;   // muted points never had a halo
+      const sp = haloSprite[f];
+      for (let i = 0; i < n; i += 2) ctx.drawImage(sp, a[i] - HR, a[i + 1] - HR, HR * 2, HR * 2);
+    }
+    ctx.globalAlpha = 1;
+  }
+  for (const p of special) {
+    const isSel = p.i === selected, isNb = focusSet.has(p.i), isHov = p.i === hovered;
+    const muted = (focus && !isSel && !isNb) || (activeFam >= 0 && p.fam !== activeFam);
+    const ha = muted ? 0 : (isSel ? 0.42 : isNb ? 0.34 : 0.16); if (ha <= 0) continue;
+    const X = sx(p.wx), Y = sy(p.wy), HR = r * (isSel ? 1.7 : isNb ? 1.25 : 1) * (isHov ? 1.4 : 1) * 2.6;
+    ctx.globalAlpha = ha; ctx.drawImage(haloSprite[p.fam], X - HR, Y - HR, HR * 2, HR * 2);
+  }
+  ctx.globalAlpha = 1;
+
+  // core pass — batched: one path per (family, muted) bucket, built straight on the context
+  ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+  for (let f = 0; f < NF; f++) for (let m = 0; m < 2; m++) {
+    const a = buck[f * 2 + m], n = bCount[f * 2 + m]; if (!n) continue;
+    ctx.beginPath();
+    for (let i = 0; i < n; i += 2) { ctx.moveTo(a[i] + r, a[i + 1]); ctx.arc(a[i], a[i + 1], r, 0, 7); }
+    const c = FAMILIES[f].rgb;
+    ctx.globalAlpha = m ? 0.14 : 1; ctx.fillStyle = `rgb(${c[0]},${c[1]},${c[2]})`; ctx.fill();
+    ctx.globalAlpha = m ? 0.10 : 0.9; ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  for (const p of special) {
+    const isSel = p.i === selected, isNb = focusSet.has(p.i), isHov = p.i === hovered;
+    const muted = (focus && !isSel && !isNb) || (activeFam >= 0 && p.fam !== activeFam);
+    const rr = r * (isSel ? 1.7 : isNb ? 1.25 : 1) * (isHov ? 1.4 : 1), c = FAMILIES[p.fam].rgb;
+    const X = sx(p.wx), Y = sy(p.wy);
+    ctx.globalAlpha = muted ? 0.14 : 1;
+    ctx.beginPath(); ctx.arc(X, Y, rr, 0, 7); ctx.fillStyle = `rgb(${c[0]},${c[1]},${c[2]})`; ctx.fill();
+    ctx.globalAlpha = muted ? 0.10 : 0.9; ctx.lineWidth = isSel ? 2 : 1;
+    ctx.strokeStyle = isSel ? '#fff' : `rgba(255,255,255,0.6)`; ctx.stroke();
+    ctx.globalAlpha = 1;
+    // ring the selected point — and the peeked one, whose card is docked at the bottom of the
+    // screen on a phone and so needs the map to say which dot it is talking about
+    if (isSel || (isHov && !muted)) {
+      ctx.beginPath(); ctx.arc(X, Y, rr + 4, 0, 7);
+      ctx.strokeStyle = `rgb(${c[0]},${c[1]},${c[2]})`; ctx.lineWidth = 1.5; ctx.stroke();
     }
   }
 
@@ -266,20 +356,42 @@ const regionEls = FAMILIES.map((F) => {
   el.style.color = F.color; el.innerHTML = F.name.replace(/ & /g, ' &amp; ');
   labels.appendChild(el); return el;
 });
+// The region names are set once per breakpoint (they are the phone's colour key, so they must
+// fit it) and their half-widths cached — measuring 7 elements every frame would thrash layout.
+let regionMode = -1;
+const regionHalf: number[] = [];
+function syncRegionText() {
+  const m = isMobile() ? 1 : 0; if (m === regionMode) return; regionMode = m;
+  regionEls.forEach((el, f) => {
+    el.innerHTML = (m ? FAMILIES[f].short : FAMILIES[f].name).replace(/ & /g, ' &amp; ');
+    el.style.opacity = '0'; regionHalf[f] = 0;
+  });
+}
 const pool: HTMLDivElement[] = [];
-function estHalf(t: string) { return Math.min(78, 14 + t.length * 3.0); }
+// Half-width estimate at 11px Archivo (~5.6 px/char). The old 78px ceiling under-measured every
+// long title — "Environmental Scientists and Specialists, Including Health" is ~165px per side —
+// so the collision test cleared labels that then overlapped. Cheap estimate, no forced layout.
+function estHalf(t: string) { return Math.min(190, 10 + t.length * 2.85); }
 function drawLabels(focus: boolean, _contFade: number) {
   // region labels (coherent families), fade out as you zoom in
+  syncRegionText();
   const showReg = !focus && scale < sFit * 2.9;
-  const shown: { el: HTMLDivElement; x: number; y: number }[] = [];
+  const shown: { el: HTMLDivElement; x: number; y: number; f: number }[] = [];
   regionEls.forEach((el, f) => {
     if (!showReg || !labelAnchor[f] || (activeFam >= 0 && activeFam !== f)) { el.style.opacity = '0'; return; }
-    shown.push({ el, x: sx(labelAnchor[f]!.wx), y: sy(labelAnchor[f]!.wy) });
+    shown.push({ el, x: sx(labelAnchor[f]!.wx), y: sy(labelAnchor[f]!.wy), f });
   });
   shown.sort((a, b) => a.y - b.y);
   for (let i = 1; i < shown.length; i++) { const a = shown[i - 1], b = shown[i]; if (Math.abs(b.x - a.x) < 160 && b.y - a.y < 24) b.y = a.y + 24; }
   const rf = Math.max(0, Math.min(1, (sFit * 2.9 - scale) / (sFit * 1.0)));
-  shown.forEach((s) => { s.el.style.opacity = String(rf); s.el.style.left = s.x + 'px'; s.el.style.top = s.y + 'px'; });
+  shown.forEach((s) => {
+    // hold the whole label on screen — a key that runs off the edge is not a key
+    if (!regionHalf[s.f]) regionHalf[s.f] = s.el.offsetWidth / 2;
+    const hw = regionHalf[s.f] + 8;
+    s.el.style.opacity = String(rf);
+    s.el.style.left = Math.max(hw, Math.min(Vw - hw, s.x)) + 'px';
+    s.el.style.top = Math.max(11, Math.min(Vh - 11, s.y)) + 'px';
+  });
 
   // point labels
   const items: { p: Pt; strong: boolean; y?: number }[] = [];
@@ -294,23 +406,32 @@ function drawLabels(focus: boolean, _contFade: number) {
     items.push({ p: P[selected], strong: true, y: sy(P[selected].wy) - pr() * 1.7 - 9 });
     nbItems.forEach((it) => items.push(it));
     // the de-collision cascade below stacks labels 17px apart with no upper bound —
-    // hold them inside the viewport so the tail of a dense stack can't clip off-screen
-    for (const it of items) if (it.y !== undefined) it.y = Math.max(14, Math.min(Vh - 14, it.y));
+    // hold them inside the *visible band*: on a phone the bottom sheet covers the lower
+    // half of the viewport, and a label that lands under it is a label nobody reads
+    const floor = (isMobile() && panelOpen ? Vh - document.getElementById('panel')!.offsetHeight : Vh) - 14;
+    for (const it of items) if (it.y !== undefined) it.y = Math.max(14, Math.min(floor, it.y));
   } else {
     // The hover tooltip / touch peek callout owns the hovered point's title, so the map
     // adds no label of its own for it. Two boxes on screen at once (black tip over a
     // leftover white label) was the bug.
-    const cap = Math.max(0, Math.round((scale / sFit - 1.7) * 26));
+    // fewer in-map labels on a phone: same zoom, a third of the width to place them in
+    const cap = Math.max(0, Math.round((scale / sFit - 1.7) * (isMobile() ? 10 : 26)));
     if (cap > 0) {
+      // keep labels out from under the chrome. On a phone that chrome spans the full width —
+      // wordmark + thesis + search bar on top, key + sources at the bottom — so the exclusion
+      // is a band, not the desktop's top-left box.
+      const mob = isMobile(), topBand = mob ? 148 : 96, botBand = mob ? 132 : 118;
       const cand = P.filter((p) => {
         const X = sx(p.wx), Y = sy(p.wy), hw = estHalf(COORDS[p.i].title);
-        return X - hw > 12 && X + hw < Vw - 12 && Y > 96 && Y < Vh - 118 && !(headerBox(X) && Y < 128) && p.i !== hovered;
+        return X - hw > 12 && X + hw < Vw - 12 && Y > topBand && Y < Vh - botBand
+          && (mob || !(headerBox(X) && Y < 128)) && p.i !== hovered;
       }).sort((a, b) => (b.jz - a.jz) || (a.wx - b.wx));
       const placed = items.map((it) => ({ x: sx(it.p.wx), y: sy(it.p.wy), hw: 60 }));
+      const vGap = isMobile() ? 22 : 17;   // a phone has a third of the width to place them in
       for (const p of cand) {
         if (items.length >= cap) break;
         const X = sx(p.wx), Y = sy(p.wy), hw = estHalf(COORDS[p.i].title);
-        let ok = true; for (const q of placed) { if (Math.abs(q.x - X) < hw + q.hw && Math.abs(q.y - Y) < 17) { ok = false; break; } }
+        let ok = true; for (const q of placed) { if (Math.abs(q.x - X) < hw + q.hw && Math.abs(q.y - Y) < vGap) { ok = false; break; } }
         if (ok) { placed.push({ x: X, y: Y, hw }); items.push({ p, strong: false }); }
       }
     }
@@ -322,7 +443,11 @@ function drawLabels(focus: boolean, _contFade: number) {
     if (i >= vis.length) { e.style.display = 'none'; return; }
     const { p, strong, y } = vis[i];
     e.style.display = 'block'; e.textContent = COORDS[p.i].title;
-    e.style.left = sx(p.wx) + 'px'; e.style.top = (y !== undefined ? y : (sy(p.wy) - pr() * (strong ? 1.7 : 1) - 9)) + 'px';
+    // hold the label on screen (estimated half-width — measuring 11 elements a frame thrashes
+    // layout); a job title clipped by the screen edge names nothing
+    const hw = Math.min(COORDS[p.i].title.length * 2.8 + 8, Vw / 2 - 6);
+    e.style.left = Math.max(hw, Math.min(Vw - hw, sx(p.wx))) + 'px';
+    e.style.top = (y !== undefined ? y : (sy(p.wy) - pr() * (strong ? 1.7 : 1) - 9)) + 'px';
     e.className = 'plabel' + ((strong || focus) ? ' lead' : '');
     e.style.fontWeight = strong ? '700' : '500';
     e.style.color = strong ? 'var(--ink)' : 'var(--ink-soft)';
@@ -331,8 +456,10 @@ function drawLabels(focus: boolean, _contFade: number) {
 }
 
 /* ---------- picking ---------- */
-function pick(mx: number, my: number) {
-  let best = -1, bd = 1e9, r = pr() + 6;
+// A fingertip is ~9 mm; a fitted dot is ~3 px. Touch gets a 22 px catch radius (nearest wins)
+// instead of the cursor's 6 — safe because the first tap only *peeks*, it doesn't commit.
+function pick(mx: number, my: number, touch?: boolean) {
+  let best = -1, bd = 1e9, r = pr() + (touch ? 22 : 6);
   for (const p of P) { const d = (sx(p.wx) - mx) ** 2 + (sy(p.wy) - my) ** 2; if (d < r * r && d < bd) { bd = d; best = p.i; } }
   return best;
 }
@@ -346,10 +473,14 @@ function select(i: number) {
     // frame bbox of selected + neighbours
     let x0 = P[i].wx, x1 = P[i].wx, y0 = P[i].wy, y1 = P[i].wy;
     for (const ni of NEIGH[i].n) { const p = P[ni]; x0 = Math.min(x0, p.wx); x1 = Math.max(x1, p.wx); y0 = Math.min(y0, p.wy); y1 = Math.max(y1, p.wy); }
-    // mobile shows the panel full-screen (§6.4), so the map frames into the whole viewport
+    // Mobile: the detail is a bottom sheet, not a full-screen takeover — the constellation of
+    // 11 related jobs stays visible in the band above it, so "jobs like this" reads spatially
+    // and as a list at the same time (ticket 05). Reserve the sheet's own height, measured
+    // from the element (offsetHeight ignores the slide-in transform).
     const mob = isMobile();
     const w = Math.max(x1 - x0, 60), h = Math.max(y1 - y0, 60);
-    const padL = mob ? 28 : 110, padR = mob ? 28 : 384, padT = mob ? 96 : 150, padB = mob ? 96 : 150;
+    const sheet = mob ? document.getElementById('panel')!.offsetHeight : 0;
+    const padL = mob ? 22 : 110, padR = mob ? 22 : 384, padT = mob ? 22 : 150, padB = mob ? sheet + 22 : 150;
     // Frame at the scale the cluster actually fits at. A `Math.max(s, sFit * 1.3)` floor
     // used to be applied to the scale but not to nx/ny, framing for a zoom that was never
     // used; and for the few neighbour sets that span the map it forced a zoom they cannot
@@ -397,7 +528,12 @@ function fillPanel(i: number) {
     b.onclick = () => select(p); host.appendChild(b);
   }
 }
-function openPanel(on: boolean) { panelOpen = on; document.getElementById('panel')!.classList.toggle('on', on); }
+function openPanel(on: boolean) {
+  panelOpen = on; document.getElementById('panel')!.classList.toggle('on', on);
+  // mobile: the sheet owns the bottom half, so the entry chrome (wordmark, search, key) steps
+  // aside — the map band above the sheet is small enough that every pixel of it counts
+  document.body.classList.toggle('panel-open', on);
+}
 
 /* ---------- peek callout: touch two-stage tap (first tap = peek, second tap / "Find similar" = commit, §6.3) ---------- */
 const peek = document.createElement('div'); peek.id = 'peek';
@@ -408,10 +544,21 @@ function showPeek(i: number) {
   peekIdx = i; const d = COORDS[i], f = FAMILIES[P[i].fam];
   (peek.querySelector('.pk-sw') as HTMLElement).style.background = f.color;
   (peek.querySelector('.pk-t') as HTMLElement).innerHTML = `${d.title}<em>${f.name}</em>`;
-  peek.style.left = sx(P[i].wx) + 'px'; peek.style.top = (sy(P[i].wy) - pr() - 12) + 'px';
-  peek.classList.add('on'); hovered = i; draw();
+  peek.classList.add('on'); document.body.classList.add('peeking');
+  if (isMobile()) { peek.style.left = peek.style.top = ''; }   // docked by CSS — see below
+  else {
+    // clamp inside the viewport: the callout is wide and dots go right to the screen edge
+    const hw = peek.offsetWidth / 2 + 10, X = sx(P[i].wx), Y = sy(P[i].wy) - pr() - 12;
+    peek.style.left = Math.max(hw, Math.min(Vw - hw, X)) + 'px';
+    peek.style.top = Math.max(peek.offsetHeight + 8, Y) + 'px';
+  }
+  hovered = i; invalidate();
 }
-function hidePeek() { if (peekIdx < 0) return; peekIdx = -1; peek.classList.remove('on'); hovered = -1; draw(); }
+function hidePeek() {
+  if (peekIdx < 0) return;
+  peekIdx = -1; peek.classList.remove('on'); document.body.classList.remove('peeking');
+  hovered = -1; invalidate();
+}
 
 /* ---------- events: multi-pointer pan + pinch-zoom (mobile P0, §6.1), two-stage tap on touch ---------- */
 const stage = document.getElementById('stage')!;
@@ -434,11 +581,11 @@ stage.addEventListener('pointermove', (e) => {
     const ns = Math.min(sFit * 9, Math.max(sFit * 0.7, scale * (nd / pinch.d))), k = ns / scale;
     ox = mx - (mx - ox) * k; oy = my - (my - oy) * k; scale = ns;
     ox += mx - pinch.mx; oy += my - pinch.my;            // pan by the two-finger midpoint travel
-    pinch = { d: nd, mx, my }; moved = true; anim = null; hidePeek(); draw(); return;
+    pinch = { d: nd, mx, my }; moved = true; anim = null; hidePeek(); invalidate(); return;
   }
   if (drag) {
     const dx = e.clientX - lx, dy = e.clientY - ly; if (Math.abs(dx) + Math.abs(dy) > 3) { moved = true; hidePeek(); }
-    ox += dx; oy += dy; lx = e.clientX; ly = e.clientY; anim = null; draw(); return;
+    ox += dx; oy += dy; lx = e.clientX; ly = e.clientY; anim = null; invalidate(); return;
   }
   if (e.pointerType === 'touch') return;                  // no hover on touch
   const i = pick(e.clientX, e.clientY); const tip = document.getElementById('tip')!;
@@ -456,7 +603,7 @@ function endPointer(e: PointerEvent) {
   if (pointers.size === 1) { const p = [...pointers.values()][0]; lx = p.x; ly = p.y; drag = true; moved = true; return; } // 2->1: keep panning, no jump/tap
   stage.classList.remove('grabbing'); drag = false;
   if (wasSolo && !moved) {                                 // a tap
-    const i = pick(e.clientX, e.clientY);
+    const i = pick(e.clientX, e.clientY, e.pointerType === 'touch');
     if (e.pointerType === 'touch') {
       if (i < 0) hidePeek();
       else if (i === peekIdx) { const s = i; hidePeek(); select(s); } // second tap on same dot = commit
@@ -469,20 +616,27 @@ stage.addEventListener('pointercancel', endPointer);
 stage.addEventListener('wheel', (e) => {
   e.preventDefault(); anim = null; hidePeek();
   const f = Math.exp(-e.deltaY * 0.0016), ns = Math.min(sFit * 9, Math.max(sFit * 0.7, scale * f)), k = ns / scale;
-  ox = e.clientX - (e.clientX - ox) * k; oy = e.clientY - (e.clientY - oy) * k; scale = ns; draw();
+  ox = e.clientX - (e.clientX - ox) * k; oy = e.clientY - (e.clientY - oy) * k; scale = ns; invalidate();
 }, { passive: false });
 
 /* ---------- legend ---------- */
 const leg = document.getElementById('legend')!;
 FAMILIES.forEach((f, i) => {
-  const el = document.createElement('div'); el.className = 'fam'; el.dataset.f = String(i);
-  el.innerHTML = `<span class="glyph" style="background:${f.color};color:${f.color}"></span>` +
-    `<span class="nm${f.distributed ? ' dist' : ''}">${f.name}</span><span class="ct">${famCount[i]}</span>`;
+  const el = document.createElement('div'); el.className = 'fam' + (f.distributed ? ' scatter' : '');
+  el.dataset.f = String(i);
+  // both names ship; CSS picks one. On a phone the legend is the ONLY key for the three
+  // distributed families (they get no region label because they have no territory).
+  el.innerHTML = `<span class="glyph${f.distributed ? ' dist' : ''}" style="background:${f.color};color:${f.color}"></span>` +
+    `<span class="nm${f.distributed ? ' dist' : ''}">${f.name}</span>` +
+    `<span class="nm-s${f.distributed ? ' dist' : ''}">${f.short}</span><span class="ct">${famCount[i]}</span>`;
   el.title = f.distributed ? 'Scattered across the map — these roles sit near the work they serve' : '';
   el.onclick = () => {
     activeFam = activeFam === i ? -1 : i;
-    [...leg.querySelectorAll('.fam')].forEach((x) => x.classList.toggle('off', activeFam >= 0 && +(x as HTMLElement).dataset.f! !== activeFam));
-    draw();
+    [...leg.querySelectorAll('.fam')].forEach((x) => {
+      const on = activeFam === +(x as HTMLElement).dataset.f!;
+      x.classList.toggle('off', activeFam >= 0 && !on); x.classList.toggle('on', on);
+    });
+    invalidate();
   };
   leg.appendChild(el);
 });
@@ -524,4 +678,9 @@ addEventListener('resize', () => { DPR = Math.min(devicePixelRatio || 1, 2); res
 resize();
 requestAnimationFrame(loop);                            // start the render loop now that all state is initialized
 requestAnimationFrame(() => map.classList.add('in'));   // canvas fades in over paper + wordmark (§6.6)
-if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => draw());
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => invalidate());
+// dev-only measurement hook (stripped from the production bundle) — frame-budget checks, ticket 05
+if (import.meta.env.DEV) (window as any).__mm = {
+  draw, bounds: [BX0, BY0, BX1, BY1],
+  get view() { return { scale, sFit, Vw, Vh, ox, oy, mobile: isMobile() }; },
+};

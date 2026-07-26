@@ -76,6 +76,8 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
 .fam .glyph::after { content: ""; position: absolute; inset: -3px; border-radius: 50%; border: 1px solid currentColor; opacity: .3; }
 .fam .nm { font-size: 12px; color: var(--ink); letter-spacing: .005em; }
 .fam .nm.dist { color: var(--ink-soft); }
+.fam .nm-s { display: none; }                       /* phone-length name — see the mobile block */
+#legend .lg-note { display: none; }
 .fam .ct { margin-left: auto; font-size: 10px; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
 
 #foot { position: absolute; left: 30px; bottom: 22px; right: 30px; display: flex; align-items: center; gap: 22px; pointer-events: none; z-index: 4; }
@@ -111,8 +113,11 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
   font-size: 12px; padding: 0 13px; min-height: 40px; border-radius: 8px; cursor: pointer;
 }
 
+/* fixed, not absolute: parked at translateX(100%) an absolute panel still contributes
+   scrollable overflow, which widens the page to 780px at a 390 viewport and makes mobile
+   Chrome report the min-scale viewport (ticket 04 #2 — the "near-blank phone" bug) */
 #panel {
-  position: absolute; top: 0; right: 0; height: 100%; width: 344px; z-index: 7; background: var(--panel);
+  position: fixed; top: 0; right: 0; height: 100%; width: 344px; z-index: 7; background: var(--panel);
   backdrop-filter: blur(16px); border-left: 1px solid var(--hair); box-shadow: -18px 0 44px -30px var(--shadow);
   transform: translateX(100%); transition: transform .5s cubic-bezier(.22, .61, .36, 1); display: flex; flex-direction: column;
   padding: 26px 24px 20px;
@@ -151,7 +156,9 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
 .nb .t small { display: block; color: var(--ink-soft); font-size: 10.5px; margin-top: 1px; } /* content text -> AA */
 .nb .bar { margin-left: auto; display: flex; align-items: center; gap: 7px; flex: none; }
 .nb .bar .track { width: 42px; height: 4px; border-radius: 2px; background: oklch(0.26 0.02 265 / 0.10); overflow: hidden; }
-.nb .bar .fill { height: 100%; border-radius: 2px; }
+/* `display:block` is load-bearing: as an inline span the fill measured 0×0 and the similarity
+   bar rendered as an empty grey track on every platform (found while verifying ticket 05) */
+.nb .bar .fill { display: block; height: 100%; border-radius: 2px; }
 .nb .bar .pct { font-size: 10.5px; color: var(--ink-faint); font-variant-numeric: tabular-nums; width: 26px; text-align: right; }
 
 .sr-only {
@@ -162,10 +169,14 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
 @media (prefers-reduced-motion: reduce) {
   #panel, .region, #map, #tip, #peek { transition: none; }
 }
+/* ---------- phone (ticket 05) ----------
+   The atlas is width-constrained on a portrait screen: fitted edge-to-edge it still leaves
+   ~250px empty above and below. So the map takes the whole viewport and the chrome floats in
+   that gap over a paper scrim, instead of subtracting bands from a map that is already small. */
 @media (max-width: 760px) {
-  #panel { width: 100%; }
   /* thesis stays visible — on mobile the "what this is" line matters most (§6.5) */
-  #head { left: 14px; right: 14px; top: 14px; max-width: none; }
+  #head { left: 0; right: 0; top: 0; max-width: none; padding: 14px 14px 20px; z-index: 5;
+    background: linear-gradient(180deg, var(--paper) 62%, transparent); }
   #head h1 { font-size: 17px; }
   #head p {
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
@@ -175,8 +186,51 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
   #search { left: 14px; right: 14px; top: 92px; width: auto; }
   #search .box { padding: 12px 14px; }
   #results button { padding: 13px 14px; }
-  #legend { display: none; }
   #helper { display: none; }
-  #foot { left: 14px; right: 14px; bottom: 12px; }
+
+  /* The key. The seven coherent families are named in place by their region labels; the three
+     distributed ones have no territory and therefore no label, so on a phone — where the full
+     legend does not fit — they are the only ones that still need one. Tapping isolates the
+     family, which is the only way to see a scattered colour at all. */
+  #legend { left: 0; right: 0; bottom: 72px; flex-direction: row; flex-wrap: wrap; align-items: center;
+    gap: 5px 6px; padding: 14px 14px 0; z-index: 5; }   /* 72px clears the source block below */
+  #legend .lg-title { display: none; }
+  #legend .lg-note { display: block; width: 100%; font-size: 10px; color: var(--ink-faint);
+    font-family: var(--narrow); text-transform: uppercase; letter-spacing: .12em; margin: 0 0 1px; }
+  #legend .fam:not(.scatter) { display: none; }
+  #legend .fam.scatter { padding: 6px 10px; border-radius: 999px; background: var(--panel);
+    border: 1px solid var(--hair); backdrop-filter: blur(8px); gap: 7px; }
+  #legend .fam.scatter.on { border-color: currentColor; box-shadow: 0 2px 10px -6px var(--shadow); }
+  #legend .nm { display: none; }
+  #legend .nm-s { display: inline; font-size: 11.5px; color: var(--ink); white-space: nowrap; }
+  #legend .ct { display: none; }
+
+  /* The peek card docks above the key instead of floating at the dot: a 275px callout anchored
+     to a dot near the screen edge gets clamped so far from it that it points at nothing. Docked,
+     it never covers the tap target, and the map rings the peeked dot to keep the link. */
+  #peek { left: 14px; right: 14px; bottom: 72px; top: auto; transform: none; max-width: none; }
+  body.peeking #legend { display: none; }
+  #peek .pk-t { flex: 1; min-width: 0; }
+  #peek .pk-go { min-width: 116px; }
+
+  #foot { left: 0; right: 0; bottom: 0; padding: 16px 14px 10px; z-index: 4;
+    background: linear-gradient(0deg, var(--paper) 58%, transparent); }
   #source { text-align: left; margin-left: 0; font-size: 9.5px; }
+
+  /* Detail is a bottom sheet, not a takeover: the eleven related jobs stay on the map above it,
+     so "jobs like this" reads spatially and as a ranked list at the same time. */
+  #panel {
+    width: 100%; top: auto; bottom: 0; height: 58dvh; border-left: 0; border-top: 1px solid var(--hair);
+    border-radius: 18px 18px 0 0; transform: translateY(100%); padding: 20px 16px 14px;
+    box-shadow: 0 -18px 44px -26px var(--shadow);
+  }
+  #panel::before {                                   /* grab handle — the sheet swipes down */
+    content: ""; position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+    width: 38px; height: 4px; border-radius: 2px; background: var(--hair);
+  }
+  /* clamp the blurb so the ranked list — the reason the sheet exists — keeps the room */
+  #panel .desc { max-height: none; margin: 10px 0 2px; overflow: hidden;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+  #panel .meta { gap: 14px; margin: 12px 0 2px; }
+  body.panel-open #head, body.panel-open #search, body.panel-open #legend, body.panel-open #foot { display: none; }
 }
