@@ -29,14 +29,14 @@ const N = COORDS.length;
 interface Fam { key: string; name: string; short: string; groups: string[]; color: string; distributed?: boolean; rgb: number[]; }
 const FAMILIES: Fam[] = ([
   { key: 'stem',  name: 'Science, Tech & Engineering',  short: 'Science & Tech',   groups: ['15', '17', '19'], color: '#2f6fc4' },
-  { key: 'edu',   name: 'Education, Law & Social',       short: 'Education & Law', groups: ['21', '23', '25'], color: '#12867a' },
+  { key: 'edu',   name: 'Education, Law & Social',       short: 'Education & Law', groups: ['21', '23', '25'], color: '#0f9488' },
   { key: 'health',name: 'Healthcare',                    short: 'Healthcare',      groups: ['29', '31'],       color: '#d8474d' },
-  { key: 'arts',  name: 'Arts & Media',                  short: 'Arts & Media',    groups: ['27'],             color: '#c94f9a' },
+  { key: 'arts',  name: 'Arts & Media',                  short: 'Arts & Media',    groups: ['27'],             color: '#8a2472' },
   { key: 'sales', name: 'Sales & Office',                short: 'Sales & Office',  groups: ['41', '43'],       color: '#a575e8', distributed: true },
   { key: 'mgmt',  name: 'Management & Business',         short: 'Management',      groups: ['11', '13'],       color: '#73b0ee', distributed: true },
   { key: 'food',  name: 'Food & Hospitality',           short: 'Food & Hotels',   groups: ['35'],             color: '#e8813a' },
   { key: 'svc',   name: 'Personal & Protective Service', short: 'Service',         groups: ['33', '37', '39'], color: '#bfb800', distributed: true },
-  { key: 'trade', name: 'Skilled Trades & Production',   short: 'Trades',          groups: ['47', '49', '51'], color: '#9c6a3c' },
+  { key: 'trade', name: 'Skilled Trades & Production',   short: 'Trades',          groups: ['47', '49', '51'], color: '#b5651d' },
   { key: 'trans', name: 'Transportation & Farming',      short: 'Transport & Farm',groups: ['53', '45'],       color: '#3bb974' },
 ] as Omit<Fam, 'rgb'>[]).map((f) => ({ ...f, rgb: [] as number[] }));
 const GROUP2FAM: Record<string, number> = {};
