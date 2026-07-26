@@ -3,7 +3,9 @@
 The site ships two committed artifacts and does **zero** data work at deploy time:
 
 - `src/data/coords.json` — 893 occupations: `code, title, short_description,
-  major_group(+code), job_zone, x, y, employment, median_wage, wage_capped, wage_level`
+  major_group(+code), job_zone, x, y, rx, ry, employment, median_wage, wage_capped, wage_level`.
+  `rx`/`ry` are `x`/`y` after collision relaxation (world-space, de-overlapped) — baked by
+  `relax.mjs` so the browser doesn't run 70 iterations on every load.
 - `src/data/neighbors.json` — parallel array `{n:[top-10 indices], s:[cosine scores]}`
 
 Everything below runs **once, locally, on a residential IP**, and the results are
@@ -41,6 +43,15 @@ All artifacts are **parallel by index**: `coords[i]`, `neighbors[i]`, and
    records the join resolution; siblings under one SOC share a figure (UI footnote:
    "reported at the broader occupational group level"). ~4 occupations have no published
    annual wage (per-gig performers, one rare code) → shown as "not reported".
+   **This overwrites `rx`/`ry` too** — always run `relax.mjs` (step 4b) right after.
+
+4b. **`relax.mjs`** — precomputes the collision relaxation (de-overlap dots while holding
+   projection structure: 70-iteration grid-based repulsion, `R=14 maxDisp=46`) that used to
+   run in the browser on every load (~1.4s of the ~1.75s blocking startup) and writes the
+   result into `src/data/coords.json` as `rx`/`ry`. The algorithm is copied verbatim from
+   `map.ts`'s old `relax()` — keep them in sync if the params ever change. Run with plain
+   `node` (not Python): Node and the browser are both V8, so running the identical algorithm
+   there reproduces the runtime output exactly, rather than risking drift from a re-implementation.
 
 5. **`verify.py`** — acceptance gate on the committed data (no re-projection):
    - `neighbors.json` matches the exact top-10 cosine recomputed from the embeddings
@@ -51,6 +62,7 @@ All artifacts are **parallel by index**: `coords[i]`, `neighbors[i]`, and
 ## Regenerate the shipped data
 ```
 python pipeline/join_bls.py     # re-downloads OEWS if pipeline/raw/ is empty
+node pipeline/relax.mjs          # re-bakes rx/ry (join_bls.py overwrites them)
 python pipeline/verify.py        # must print OK
 ```
 

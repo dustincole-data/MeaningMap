@@ -12,7 +12,7 @@ import neighData from '../data/neighbors.json';
 interface Occ {
   code: string; title: string; short_description: string;
   major_group: string; major_group_code: string; job_zone: number;
-  x: number; y: number;
+  x: number; y: number; rx: number; ry: number;
   employment: number | null; median_wage: number | null;
   wage_capped: boolean; wage_level: string | null;
 }
@@ -46,48 +46,19 @@ const rgb = (hex: string) => { const n = parseInt(hex.slice(1), 16); return [(n 
 FAMILIES.forEach((f) => (f.rgb = rgb(f.color)));
 
 /* ---------- world coords ---------- */
+// rx/ry are pre-relaxed (de-overlapped) world coords, baked by pipeline/relax.mjs —
+// see that file for the collision-relaxation algorithm this used to run on every load.
 interface Pt { i: number; wx: number; wy: number; fam: number; jz: number; }
-const WORLD = 1000;
-const P: Pt[] = COORDS.map((d, i) => ({ i, wx: d.x * WORLD, wy: (1 - d.y) * WORLD, fam: famOf(d), jz: d.job_zone || 2 }));
+const P: Pt[] = COORDS.map((d, i) => ({ i, wx: d.rx, wy: d.ry, fam: famOf(d), jz: d.job_zone || 2 }));
 const famCount = FAMILIES.map(() => 0); P.forEach((p) => famCount[p.fam]++);
 
-/* ---------- collision relaxation: de-overlap while holding structure ---------- */
-(function relax() {
-  const R = 14, R2 = R * R, maxDisp = 46, ITER = 70, cell = R;
-  const ax = P.map((p) => p.wx), ay = P.map((p) => p.wy);
-  for (let it = 0; it < ITER; it++) {
-    const grid = new Map<string, number[]>();
-    for (let i = 0; i < N; i++) { const k = ((P[i].wx / cell) | 0) + ',' + ((P[i].wy / cell) | 0); let a = grid.get(k); if (!a) grid.set(k, a = []); a.push(i); }
-    const dx = new Float32Array(N), dy = new Float32Array(N);
-    for (let i = 0; i < N; i++) {
-      const gx = (P[i].wx / cell) | 0, gy = (P[i].wy / cell) | 0;
-      for (let ox = -1; ox <= 1; ox++) for (let oy = -1; oy <= 1; oy++) {
-        const arr = grid.get((gx + ox) + ',' + (gy + oy)); if (!arr) continue;
-        for (const j of arr) {
-          if (j <= i) continue;
-          let ddx = P[i].wx - P[j].wx, ddy = P[i].wy - P[j].wy, d2 = ddx * ddx + ddy * ddy;
-          if (d2 < R2) {
-            if (d2 < 1e-4) { ddx = (i % 7 - 3) * 0.1; ddy = (j % 7 - 3) * 0.1; d2 = ddx * ddx + ddy * ddy + 1e-3; }
-            const d = Math.sqrt(d2), push = (R - d) / d * 0.5, px = ddx * push, py = ddy * push;
-            dx[i] += px; dy[i] += py; dx[j] -= px; dy[j] -= py;
-          }
-        }
-      }
-    }
-    for (let i = 0; i < N; i++) {
-      P[i].wx += dx[i]; P[i].wy += dy[i];
-      const ox = P[i].wx - ax[i], oy = P[i].wy - ay[i], od = Math.hypot(ox, oy);
-      if (od > maxDisp) { P[i].wx = ax[i] + ox / od * maxDisp; P[i].wy = ay[i] + oy / od * maxDisp; }
-    }
-  }
-})();
 // data bounds (for a tight fit)
 let BX0 = 1e9, BY0 = 1e9, BX1 = -1e9, BY1 = -1e9;
 for (const p of P) { BX0 = Math.min(BX0, p.wx); BY0 = Math.min(BY0, p.wy); BX1 = Math.max(BX1, p.wx); BY1 = Math.max(BY1, p.wy); }
 
 /* ---------- per-family KDE (coherent families only) -> soft fill + crisp coastline ---------- */
 const G = 200, SIG = 6.6;
-// relaxation can push points slightly outside the nominal [0,WORLD] box; the field grid
+// relaxation can push points slightly outside the nominal [0,1000] box; the field grid
 // must cover the true point bounds (+ a 3-sigma falloff margin) or a family's density
 // gets cut flat at the box edge instead of fading to zero (2026-07-24 sliced-blob bug)
 const FPAD = 100;
