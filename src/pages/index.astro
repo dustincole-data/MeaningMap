@@ -16,8 +16,11 @@ import Base from '../layouts/Base.astro';
 
   <header id="head">
     <h1><span class="dot"></span>Meaning&nbsp;Map</h1>
-    <p>A crafted atlas of American work — 893 occupations placed by what the job actually involves.
-       Neighbours do similar work. Click any point to find jobs like it.</p>
+    <div class="clamp-wrap">
+      <p>A crafted atlas of American work — 893 occupations placed by what the job actually involves.
+         Neighbours do similar work. Click any point to find jobs like it.</p>
+      <button class="more" type="button" aria-expanded="false" hidden>More</button>
+    </div>
   </header>
 
   <div id="search" role="search">
@@ -52,7 +55,10 @@ import Base from '../layouts/Base.astro';
     <h2></h2>
     <div class="code"></div>
     <div class="meta"></div>
-    <div class="desc"></div>
+    <div class="clamp-wrap">
+      <div class="desc"></div>
+      <button class="more" type="button" aria-expanded="false" hidden>More</button>
+    </div>
     <div class="nb-h"><b>Jobs like this</b><span>nearest by what the work involves</span></div>
     <div id="nbs"></div>
   </aside>

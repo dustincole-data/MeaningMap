@@ -370,7 +370,11 @@ function drawLabels(focus: boolean, _contFade: number) {
   if (focus) {
     // selected pinned; neighbours vertically de-collided so none overlap
     const yOf = (p: Pt) => sy(p.wy) - pr() - 9;
-    const nbN = isMobile() ? 3 : NEIGH[selected].n.length; // mobile: list-first — only top few labels in-map (§6.4)
+    // Phone: name ONLY the selected job. Even three neighbour labels crowded the narrow band
+    // above the sheet into unreadability, and the neighbours are already named — in rank order,
+    // with their similarity — by the list right below. The dots stay; the list is the legend,
+    // and tapping a dot points at its row (highlightNb) instead of naming it twice.
+    const nbN = isMobile() ? 0 : NEIGH[selected].n.length;
     const nbItems = NEIGH[selected].n.slice(0, nbN).map((ni) => ({ p: P[ni], x: sx(P[ni].wx), y: yOf(P[ni]), strong: false }));
     nbItems.sort((a, b) => a.y - b.y);
     for (let i = 1; i < nbItems.length; i++) { const a = nbItems[i - 1], b = nbItems[i]; if (Math.abs(b.x - a.x) < 130 && b.y - a.y < 17) b.y = a.y + 17; }
@@ -488,17 +492,67 @@ function fillPanel(i: number) {
     : '';
   caveat.style.display = hasBls ? 'block' : 'none';
   pn.querySelector('.desc')!.textContent = d.short_description || '';
+  syncClamp(pn.querySelector('.desc')!.parentElement as HTMLElement, false);
   const nb = NEIGH[i], host = document.getElementById('nbs')!; host.innerHTML = '';
   for (let j = 0; j < nb.n.length; j++) {
     const p = nb.n[j], nd = COORDS[p], nf = FAMILIES[P[p].fam], pct = Math.round(nb.s[j] * 100);
     const b = document.createElement('button'); b.className = 'nb';
+    b.dataset.i = String(p);                    // lets a tap on the dot find this row (highlightNb)
     b.innerHTML = `<span class="rk">${j + 1}</span><span class="sw" style="background:${nf.color}"></span>` +
       `<span class="t">${nd.title}<small>${nd.major_group}</small></span>` +
       `<span class="bar"><span class="track"><span class="fill" style="width:${(nb.s[j] * 100).toFixed(0)}%;background:${nf.color}"></span></span>` +
       `<span class="pct">${pct}%</span></span>`;
     b.onclick = () => select(p); host.appendChild(b);
   }
+  host.scrollTop = 0;
 }
+
+/* A tap on a neighbour dot answers itself in the list: no re-select, no re-frame. Re-selecting
+   moved the ground under the user — a new neighbour set, a new camera — when all they asked was
+   "which one is that?". So the dot rings, and its ranked row scrolls up and lights. */
+function highlightNb(i: number) {
+  const host = document.getElementById('nbs')!;
+  const el = host.querySelector(`.nb[data-i="${i}"]`) as HTMLElement | null;
+  if (!el) return;
+  host.querySelectorAll('.nb.hi').forEach((x) => x.classList.remove('hi'));
+  el.classList.add('hi');
+  // scroll the row into the middle of the list's own scroller. Deliberately NOT
+  // scrollIntoView(): that walks up and scrolls ancestors too, and on iOS scrolling the
+  // document out from under a fixed layout is exactly the class of bug we are chasing.
+  const top = host.scrollTop + el.getBoundingClientRect().top - host.getBoundingClientRect().top
+    - (host.clientHeight - el.offsetHeight) / 2;
+  host.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+  hovered = i; invalidate();
+}
+
+/* ---------- clamped copy: show the control only when something is actually hidden ---------- */
+function syncClamp(wrap: HTMLElement, keepOpen: boolean) {
+  const btn = wrap.querySelector('.more') as HTMLButtonElement | null;
+  const txt = wrap.querySelector('p, .desc') as HTMLElement | null;
+  if (!btn || !txt) return;
+  if (!keepOpen) { wrap.classList.remove('open'); btn.textContent = 'More'; btn.setAttribute('aria-expanded', 'false'); }
+  // measured against the collapsed box, so it must run while collapsed; a blurb that already
+  // fits gets no control at all (a "More" that reveals nothing is the same lie as the cut).
+  btn.hidden = wrap.classList.contains('open') ? false : txt.scrollHeight <= txt.clientHeight + 1;
+}
+// The header and the search bar are both absolutely positioned, so nothing reflows when the
+// thesis grows — the revealed line would simply land under the search box (and be unclickable).
+// Publish the header's measured height instead of hard-coding a second magic top.
+function layoutHead() {
+  document.documentElement.style.setProperty('--search-top', document.getElementById('head')!.offsetHeight + 'px');
+}
+document.querySelectorAll<HTMLElement>('.clamp-wrap').forEach((wrap) => {
+  const btn = wrap.querySelector('.more') as HTMLButtonElement | null;
+  if (!btn) return;
+  btn.onclick = (e) => {
+    e.stopPropagation();
+    const open = wrap.classList.toggle('open');
+    btn.textContent = open ? 'Less' : 'More';
+    btn.setAttribute('aria-expanded', String(open));
+    if (!open) syncClamp(wrap, false);
+    layoutHead();
+  };
+});
 function openPanel(on: boolean) {
   panelOpen = on; document.getElementById('panel')!.classList.toggle('on', on);
   // mobile: the sheet owns the bottom half, so the entry chrome (wordmark, search, key) steps
@@ -576,6 +630,9 @@ function endPointer(e: PointerEvent) {
   if (wasSolo && !moved) {                                 // a tap
     const i = pick(e.clientX, e.clientY, e.pointerType === 'touch');
     if (e.pointerType === 'touch') {
+      // inside a phone's focus view the neighbour dots are unlabelled, so a tap on one is a
+      // question — "which of these is that?" — not a request to go there. Answer it in the list.
+      if (i >= 0 && isMobile() && selected >= 0 && focusSet.has(i)) { hidePeek(); highlightNb(i); return; }
       if (i < 0) hidePeek();
       else if (i === peekIdx) { const s = i; hidePeek(); select(s); } // second tap on same dot = commit
       else showPeek(i);                                              // first tap = peek
@@ -631,7 +688,10 @@ q.addEventListener('keydown', (e) => { if (e.key === 'Enter') { const b = result
 function closePanel() { select(-1); fitAll(false); }
 (document.querySelector('#panel .close') as HTMLButtonElement).onclick = closePanel;
 addEventListener('keydown', (e) => { if (e.key === 'Escape') closePanel(); });
-addEventListener('resize', () => { DPR = Math.min(devicePixelRatio || 1, 2); resize(); });
+addEventListener('resize', () => { DPR = Math.min(devicePixelRatio || 1, 2); resize(); syncClamps(); });
+// whether the copy overflows depends on the width it is measured at, so re-test on every
+// breakpoint change: the control must appear on a phone and disappear on a desktop.
+function syncClamps() { document.querySelectorAll<HTMLElement>('.clamp-wrap').forEach((w) => syncClamp(w, w.classList.contains('open'))); layoutHead(); }
 
 // mobile: swipe the panel header down to dismiss (§6.7 — not a trap behind a tiny ✕)
 {
@@ -649,11 +709,15 @@ addEventListener('resize', () => { DPR = Math.min(devicePixelRatio || 1, 2); res
 resize();
 requestAnimationFrame(loop);                            // start the render loop now that all state is initialized
 requestAnimationFrame(() => map.classList.add('in'));   // canvas fades in over paper + wordmark (§6.6)
-if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => invalidate());
+syncClamps();
+// the thesis is set in Archivo; measured against the fallback face it can look like it fits
+// when the real one wraps, so re-test once the webfont has actually landed
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { invalidate(); syncClamps(); });
 // dev-only measurement hook (stripped from the production bundle) — frame-budget checks, ticket 05
 if (import.meta.env.DEV) (window as any).__mm = {
   draw, bounds: [BX0, BY0, BX1, BY1],
   get view() { return { scale, sFit, Vw, Vh, ox, oy, mobile: isMobile() }; },
+  screenOf: (i: number) => ({ x: sx(P[i].wx), y: sy(P[i].wy) }),   // lets a test tap an actual dot
 };
 
 /* ---------- ?debug=1 viewport probe (TEMPORARY — remove once the iOS tap-drift bug is root-caused) ----

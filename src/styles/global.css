@@ -161,6 +161,13 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
 .nb .bar .fill { display: block; height: 100%; border-radius: 2px; }
 .nb .bar .pct { font-size: 10.5px; color: var(--ink-faint); font-variant-numeric: tabular-nums; width: 26px; text-align: right; }
 
+/* Clamped copy gets a real control, never a silent cut. Desktop has the room for the full
+   text in both places, so the wrapper is inert there and only the phone arms the toggle. */
+.clamp-wrap { position: relative; }
+.clamp-wrap .more { display: none; }
+#head .clamp-wrap { --fade: var(--paper); }
+#panel .clamp-wrap { --fade: var(--panel); }
+
 .sr-only {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
   clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
@@ -182,8 +189,24 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
     font-size: 11.5px; line-height: 1.45; margin-top: 5px;
   }
-  /* search is the primary mobile entry (§6.2) — full-width bar under the wordmark */
-  #search { left: 14px; right: 14px; top: 92px; width: auto; }
+  #head .clamp-wrap.open p { -webkit-line-clamp: none; }
+
+  /* The expand control: parked over a fade at the end of the last visible line, so arming the
+     affordance costs no vertical room — the whole point on a screen this tight. Opened, it
+     steps onto its own line rather than sitting on top of the text it just revealed. */
+  .clamp-wrap .more {
+    display: inline-flex; align-items: center; position: absolute; right: 0; bottom: 0;
+    pointer-events: auto; border: 0; cursor: pointer; font-family: var(--sans); font-weight: 600;
+    font-size: 11px; line-height: 1.45; color: var(--ink); padding: 0 0 0 26px;
+    background: linear-gradient(90deg, transparent, var(--fade) 26%);
+  }
+  .clamp-wrap .more[hidden] { display: none; }
+  .clamp-wrap .more::after { content: ""; position: absolute; inset: -11px -8px; }  /* 24px+ tap target */
+  .clamp-wrap.open .more { position: relative; background: none; padding: 3px 0 0; }
+  /* search is the primary mobile entry (§6.2) — full-width bar under the wordmark. Its top
+     tracks the header's measured height (layoutHead), so expanding the thesis pushes the bar
+     down instead of the revealed line landing underneath it. */
+  #search { left: 14px; right: 14px; top: var(--search-top, 92px); width: auto; transition: top .18s ease; }
   #search .box { padding: 12px 14px; }
   #results button { padding: 13px 14px; }
   #helper { display: none; }
@@ -221,16 +244,28 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
      so "jobs like this" reads spatially and as a ranked list at the same time. */
   #panel {
     width: 100%; top: auto; bottom: 0; height: 58dvh; border-left: 0; border-top: 1px solid var(--hair);
-    border-radius: 18px 18px 0 0; transform: translateY(100%); padding: 20px 16px 14px;
+    border-radius: 18px 18px 0 0; transform: translateY(100%); padding: 16px 16px 14px;
     box-shadow: 0 -18px 44px -26px var(--shadow);
   }
   #panel::before {                                   /* grab handle — the sheet swipes down */
     content: ""; position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
     width: 38px; height: 4px; border-radius: 2px; background: var(--hair);
   }
-  /* clamp the blurb so the ranked list — the reason the sheet exists — keeps the room */
-  #panel .desc { max-height: none; margin: 10px 0 2px; overflow: hidden;
-    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
-  #panel .meta { gap: 14px; margin: 12px 0 2px; }
+  /* The sheet's whole point is the ranked list, and at 58dvh the identity block above it was
+     spending 324 of 490px — leaving 2.7 rows of 10. Every value below is that block bought back:
+     a smaller title, tighter rules, and a 2-line blurb (expandable, so nothing is merely hidden).
+     Row heights are deliberately NOT touched — a clamped job title names no job. */
+  #panel h2 { font-size: 17px; margin: 9px 0 3px; }
+  #panel .meta { gap: 14px; margin: 8px 0 2px; }
+  #panel .caveat { margin-top: 4px; }
+  #panel .clamp-wrap { margin: 8px 0 2px; }
+  #panel .desc { max-height: none; margin: 0; overflow: hidden;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  /* every short_description in the data tops out at 161 chars = 3 lines, so expanding costs
+     one line and can never crowd the list out — no cap needed, and none invented */
+  #panel .clamp-wrap.open .desc { -webkit-line-clamp: none; }
+  #panel .nb-h { margin: 12px 0 6px; padding-top: 10px; }
+  /* the dot a tap landed on, answered in the list — see highlightNb() */
+  .nb.hi { background: oklch(0.26 0.02 265 / 0.08); box-shadow: inset 3px 0 0 var(--ink-faint); }
   body.panel-open #head, body.panel-open #search, body.panel-open #legend, body.panel-open #foot { display: none; }
 }
