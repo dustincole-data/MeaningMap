@@ -40,18 +40,27 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
 }
 #head p { margin: 8px 0 0; font-size: 12px; line-height: 1.5; color: var(--ink-soft); max-width: 320px; }
 
-/* The byline end of the masthead: same top line as the wordmark, opposite corner. It is the only
-   thing in that corner, so the search bar starts below it rather than beside it — a 32px drop
-   that still clears fitAll()'s 110px desktop top pad, so the atlas does not move. */
-#sig {
-  position: absolute; top: 29px; right: 30px; z-index: 6; pointer-events: auto;
-  font-size: 11px; color: var(--ink-faint); text-decoration: none; letter-spacing: .01em;
-  padding: 6px 4px; margin: -6px -4px; transition: color .15s;
-}
-#sig:hover, #sig:focus-visible { color: var(--ink); }
-#sig .s-short { display: none; }                    /* phone-length name — see the mobile block */
+/* dustincoledata brand mark — the shared one (Where America Moves / Real Price / Redraft), copied
+   verbatim down to the hard-coded brand colours; a mark that drifts per project is not a mark.
+   Only the anchor corner is this page's own: top-right as asked, on the wordmark's line, at the
+   30/14px margins the rest of this chrome already uses. Keeps WAM's scrim + blur, because here too
+   it floats over a live canvas. The search bar starts below it rather than beside it — a drop that
+   still clears fitAll()'s 110px desktop top pad, so the atlas does not move. */
+.dcd-mark{position:absolute;top:24px;right:30px;z-index:6;
+  display:inline-flex;align-items:baseline;gap:7px;padding:7px 12px;border-radius:999px;
+  background:rgba(255,255,255,.72);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+  border:1px solid rgba(22,24,29,.10);box-shadow:0 2px 10px rgba(16,18,24,.06);
+  text-decoration:none;line-height:1;opacity:.85;transition:opacity .2s ease,transform .2s ease;}
+.dcd-mark:hover{opacity:1;transform:translateY(-1px);}
+.dcd-mark:focus-visible{outline:2px solid #4A3AAB;outline-offset:2px;}
+.dcd-mark-name{font-family:'Archivo',-apple-system,'Segoe UI','Helvetica Neue',Arial,sans-serif;
+  font-weight:600;font-size:13px;letter-spacing:-.01em;color:#16181D;}
+.dcd-mark-suffix{font-family:ui-monospace,'Cascadia Code','Segoe UI Mono',Menlo,monospace;
+  font-weight:500;font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:#565C68;}
+@media print{.dcd-mark{display:none;}}
+@media (prefers-reduced-motion:reduce){.dcd-mark{transition:none;}}
 
-#search { position: absolute; top: 58px; right: 30px; width: 248px; pointer-events: auto; z-index: 6; }
+#search { position: absolute; top: 62px; right: 30px; width: 248px; pointer-events: auto; z-index: 6; }
 #search .box {
   display: flex; align-items: center; gap: 8px; background: var(--panel); backdrop-filter: blur(10px);
   border: 1px solid var(--hair); border-radius: 11px; padding: 9px 12px; box-shadow: 0 6px 22px -12px var(--shadow);
@@ -207,12 +216,9 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
   }
   #head .clamp-wrap.open p { -webkit-line-clamp: none; }
 
-  /* Byline sits on the wordmark's line (both centred on ~24px) and drops the name — at 390px the
-     domain alone is the signature. Offsets are padding-compensated so the text still lands on the
-     header's own 14px margin while the tap target stays ~29px tall. */
-  #sig { top: 10px; right: 8px; padding: 8px 6px; margin: 0; font-size: 10.5px; }
-  #sig .s-full { display: none; }
-  #sig .s-short { display: inline; }
+  /* The mark itself is unchanged at every width (that is the point); only the corner moves in to
+     the header's own 14px margin, still centred on the wordmark's line. */
+  .dcd-mark { top: 10px; right: 14px; }
 
   /* The expand control: parked over a fade at the end of the last visible line, so arming the
      affordance costs no vertical room — the whole point on a screen this tight. Opened, it
@@ -309,5 +315,5 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
   /* the dot a tap landed on, answered in the list — see highlightNb() */
   .nb.hi { background: oklch(0.26 0.02 265 / 0.08); box-shadow: inset 3px 0 0 var(--ink-faint); }
   body.panel-open #head, body.panel-open #search, body.panel-open #legend, body.panel-open #foot,
-  body.panel-open #sig { display: none; }
+  body.panel-open .dcd-mark { display: none; }
 }

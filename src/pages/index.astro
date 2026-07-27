@@ -23,11 +23,10 @@ import Base from '../layouts/Base.astro';
     </div>
   </header>
 
-  <!-- signature: the masthead's right-hand end (wordmark left, byline right), a quiet way back
-       to the brand site. Its own element, not a child of #head — #head is pointer-events:none. -->
-  <a id="sig" href="https://dustincoledata.com">
-    <span class="s-full">Dustin&nbsp;Cole · dustincoledata.com</span>
-    <span class="s-short">dustincoledata.com</span>
+  <!-- dustincoledata brand mark -->
+  <a class="dcd-mark" href="https://dustincoledata.com" target="_blank" rel="noopener"
+     aria-label="A Dustin Cole Data project">
+    <span class="dcd-mark-name">Dustin Cole</span><span class="dcd-mark-suffix">Data</span>
   </a>
 
   <div id="search" role="search">
