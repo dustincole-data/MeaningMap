@@ -1,7 +1,7 @@
 # Meaning Map
 
 A crafted, readable atlas of **893 US occupations** placed by what the work actually
-involves — similar jobs sit near each other, coloured by occupation family. Click any
+involves — related work clusters into regions, coloured by occupation family. Click any
 job to find the ones most like it. Live: **meaningmap.dustincoledata.com**
 
 Real O*NET + BLS data, **browser-side, no server, no model shipped, zero runtime
