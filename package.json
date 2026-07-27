@@ -6,13 +6,17 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "fonts": "node --experimental-strip-types pipeline/fonts.ts"
+    "fonts": "node --experimental-strip-types pipeline/fonts.ts",
+    "check": "node tests/mm-check.mjs",
+    "check:sim": "node tests/mm-sim.mjs",
+    "check:all": "npm run check && npm run check:sim"
   },
   "dependencies": {
     "astro": "^5.0.0"
   },
   "devDependencies": {
-    "@types/node": "^22.10.0"
+    "@types/node": "^22.10.0",
+    "playwright-core": "^1.62.0"
   },
   "engines": {
     "node": ">=22.6"

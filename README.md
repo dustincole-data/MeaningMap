@@ -39,6 +39,24 @@ Shipped data lives in `src/data/{coords,neighbors}.json` and is **committed** �
 build does zero fetching or compute. Fonts are self-hosted (`npm run fonts`); the OG/social
 image is `public/og/cover.png`.
 
+## Checks
+
+Two Playwright scripts drive a real browser (installed Edge — `playwright-core` downloads
+nothing) against a running dev server, at 390×844 touch **and** 1440×900:
+
+```
+npm run dev                        # in one terminal
+npm run check                      # 58 assertions: chrome, sheet, touch two-stage, brand mark, key
+npm run check:sim                  # 41 assertions: leader + bar similarity encodings
+npm run check:all
+MM_URL=http://127.0.0.1:4322/ npm run check     # if dev picked another port
+```
+
+`check:sim` measures the encodings as **rendered** — ink sampled from a screenshot along each
+leader, bar widths read off the boxes — not the formula. Both encodings have shipped in a state
+where the formula was right and the picture was unreadable, and no assertion over the source can
+tell "faint but correct" from "noise". Screenshots land in `tests/.artifacts/` (git-ignored).
+
 ## Rebake the data (occasional, local only)
 
 The BLS OEWS join must run on a **residential IP** — BLS.gov 403-blocks datacenter IPs

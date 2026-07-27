@@ -43,8 +43,23 @@ import Base from '../layouts/Base.astro';
   </div>
 
   <div id="foot">
+    <!-- The key names what the map ENCODES. It used to read "near = similar work" — a distance
+         claim the projection cannot support: the nearest dot on screen is the #1 match just 31%
+         of the time (mean rank correlation 0.43). The ranking is carried by the leader lines
+         instead, so the key states that, and claims nothing about distance. "better" not
+         "closer": the point is to get spatial language out of the sentence entirely.
+         Two keys, not three, is a width constraint — a third fits at 1440 but pushes the source
+         block to three lines below ~940px, and the footer is not allowed to move. -->
     <div id="helper">
-      <span class="k"><span class="arrow"></span> <b>near&nbsp;=&nbsp;similar work</b></span>
+      <span class="k">
+        <svg class="fan" width="30" height="14" viewBox="0 0 30 14" fill="none" aria-hidden="true">
+          <circle cx="3" cy="7" r="2.1" opacity=".55"/>
+          <path d="M4 7h25" stroke-width="2.4" opacity=".42"/>
+          <path d="M4.4 6.2 28 1.6" stroke-width="1.6" opacity=".26"/>
+          <path d="M4.4 7.8 28 12.4" stroke-width="0.8" opacity=".13"/>
+        </svg>
+        <b>heavier = better match</b>
+      </span>
       <span class="k">colour = family</span>
     </div>
     <div id="source">

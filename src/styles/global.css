@@ -104,8 +104,11 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
 #helper { font-size: 11px; color: var(--ink-soft); flex: none; display: flex; align-items: center; gap: 16px; }
 #helper b { color: var(--ink); font-weight: 600; }
 #helper .k { display: inline-flex; align-items: center; gap: 6px; }
-#helper .arrow { display: inline-block; width: 34px; height: 1px; background: linear-gradient(90deg, var(--ink-faint), transparent); position: relative; }
-#helper .arrow::before { content: ""; position: absolute; left: 0; top: -2px; width: 5px; height: 5px; border-radius: 50%; background: var(--ink-faint); }
+/* the key's glyph IS the encoding: three leaders off one dot at the shipped end-points of
+   leaderStyle() — 2.4px/0.42 down to 0.8px/0.13 — in the same ink the canvas strokes them with */
+#helper .fan { flex: none; }
+#helper .fan circle { fill: rgb(70 76 92); }
+#helper .fan path { stroke: rgb(70 76 92); }
 #source { font-size: 10.5px; color: var(--ink-faint); line-height: 1.4; margin-left: auto; text-align: right; }
 #source b { font-weight: 600; color: var(--ink-soft); }
 

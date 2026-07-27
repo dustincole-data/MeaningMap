@@ -217,6 +217,26 @@ function leaderStyle(s: number[], j: number) {
   return { w: 0.8 + 1.6 * t, a: 0.13 + 0.29 * t };
 }
 
+/* The list's bar answers the OTHER question — not "which of these ten" but "how close is this,
+   on the atlas's own scale" — so unlike the leader it is absolute, and stays comparable when you
+   select a different job. Both are monotone in the same similarity, so the two encodings can
+   never rank a pair differently; only the contrast differs.
+   The domain is the range the data actually occupies (0.703–0.971 over all 8,930 pairs), NOT
+   0–100%: cosine has no meaningful zero here — unrelated bge-small text still scores ~0.7 — so a
+   full-width track spent seven tenths of its length on similarities that cannot occur, and the
+   whole atlas rendered between 30 and 41 of 42px. 95% and 85% were 4px apart, which is the same
+   invisible-encoding bug the leaders had.
+   Floored at 8% for the same reason the leaders are floored: an empty track reads as "no data",
+   not as "the weakest of the ten".
+   Fed the ROUNDED percentage the row prints, not the raw cosine: the bar sits against its own
+   number, so three rows that all say 85% have to draw the same bar. On the old scale they differed
+   by 0.35px and nobody could see it; on this one it is 1.2px and the bar starts contradicting the
+   label. Sub-percent precision is not worth a visible disagreement between the two. */
+const SIM_LO = 0.70, SIM_HI = 0.97;
+function simFill(pct: number) {
+  return 8 + 92 * Math.max(0, Math.min(1, (pct / 100 - SIM_LO) / (SIM_HI - SIM_LO)));
+}
+
 /* One halo sprite per family, baked once — no more `createRadialGradient` per point per frame.
    Ambient halos are the glow that makes the atlas feel lit, and they are the one effect that
    costs a draw call PER POINT, which is what a phone cannot afford. Measured at 4× CPU with
@@ -526,7 +546,7 @@ function fillPanel(i: number) {
     b.dataset.i = String(p);                    // lets a tap on the dot find this row (highlightNb)
     b.innerHTML = `<span class="rk">${j + 1}</span><span class="sw" style="background:${nf.color}"></span>` +
       `<span class="t">${nd.title}<small>${nd.major_group}</small></span>` +
-      `<span class="bar"><span class="track"><span class="fill" style="width:${(nb.s[j] * 100).toFixed(0)}%;background:${nf.color}"></span></span>` +
+      `<span class="bar"><span class="track"><span class="fill" style="width:${simFill(pct).toFixed(1)}%;background:${nf.color}"></span></span>` +
       `<span class="pct">${pct}%</span></span>`;
     b.onclick = () => select(p); host.appendChild(b);
   }
@@ -792,4 +812,6 @@ if (import.meta.env.DEV) (window as any).__mm = {
   // the leader encoding as the renderer computes it — a CSS/canvas encoding can be present and
   // still unreadable, so the harness measures its rendered range, not its formula
   leaders: (i: number) => NEIGH[i].n.map((n, j) => ({ n, s: NEIGH[i].s[j], ...leaderStyle(NEIGH[i].s, j) })),
+  // the list bar's absolute scale, so the harness can check it over ALL 893 fans, not just one
+  simFill,
 };

@@ -18,6 +18,9 @@ pipeline/corpus.jsonl
 .claude/
 .scratch/
 
+# screenshots the UI checks write while they run
+tests/.artifacts/
+
 # python
 __pycache__/
 *.pyc
