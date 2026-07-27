@@ -195,6 +195,28 @@ let nbPeek = -1;                                                           // to
 const PR = 3.1;                              // base point screen radius
 function pr() { return Math.max(2.6, Math.min(6.5, PR * Math.pow(scale / sFit, 0.28))); }
 
+/* Leader weight + ink = how close that neighbour actually is, normalised INSIDE the fan.
+   The old encoding was absolute (alpha straight off the raw cosine): across the whole atlas it
+   spans 0.211–0.260, so the ten lines of ONE job differ by 0.025 alpha. Present, and invisible.
+   Per-fan because "which of these ten is closest" is the only question a focus view is asked,
+   and screen distance cannot answer it — the nearest dot on screen is the #1 match just 31% of
+   the time (mean rank correlation 0.43), so a neighbourhood-preserving projection invites a
+   reading it can't support. The rank has to be carried explicitly.
+   Measured DOWN from the best match, not up from the worst, so rank 1 is always the anchor and
+   a fan whose ten are all equally close renders as ten equally strong lines instead of a
+   gradient invented out of 0.016 of cosine. SIM_REF is that floor — the median fan's own spread
+   (0.073 over the 893) — so only fans flatter than typical get compressed. */
+const SIM_REF = 0.07;
+// s is stored best-first (the panel's rank numbers already rely on it)
+function leaderStyle(s: number[], j: number) {
+  const d = Math.max(s[0] - s[s.length - 1], SIM_REF);
+  const t = Math.max(0, 1 - (s[0] - s[j]) / d);       // 1 = closest in this fan, 0 = its far end
+  // the floor is not 0: the tenth line must still read as a line. At 1x it was landing on the
+  // edge of "absent", and a leader that vanishes changes how many jobs are on screen —
+  // faint has to mean far, not gone.
+  return { w: 0.8 + 1.6 * t, a: 0.13 + 0.29 * t };
+}
+
 /* One halo sprite per family, baked once — no more `createRadialGradient` per point per frame.
    Ambient halos are the glow that makes the atlas feel lit, and they are the one effect that
    costs a draw call PER POINT, which is what a phone cannot afford. Measured at 4× CPU with
@@ -244,9 +266,10 @@ function draw() {
   // leaders (focus)
   if (focus) {
     const s = P[selected], SX = sx(s.wx), SY = sy(s.wy), nb = NEIGH[selected];
-    for (let j = 0; j < nb.n.length; j++) {
-      const p = P[nb.n[j]];
-      ctx.strokeStyle = `rgba(70,76,92,${0.14 + 0.34 * (nb.s[j] - 0.55)})`; ctx.lineWidth = 1;
+    // faint ones first, so the closest match is the line drawn on top where they converge
+    for (let j = nb.n.length - 1; j >= 0; j--) {
+      const p = P[nb.n[j]], ls = leaderStyle(nb.s, j);
+      ctx.strokeStyle = `rgba(70,76,92,${ls.a})`; ctx.lineWidth = ls.w;
       ctx.beginPath(); ctx.moveTo(SX, SY); ctx.lineTo(sx(p.wx), sy(p.wy)); ctx.stroke();
     }
   }
@@ -766,4 +789,7 @@ if (import.meta.env.DEV) (window as any).__mm = {
   draw, bounds: [BX0, BY0, BX1, BY1],
   get view() { return { scale, sFit, Vw, Vh, ox, oy, mobile: isMobile() }; },
   screenOf: (i: number) => ({ x: sx(P[i].wx), y: sy(P[i].wy) }),   // lets a test tap an actual dot
+  // the leader encoding as the renderer computes it — a CSS/canvas encoding can be present and
+  // still unreadable, so the harness measures its rendered range, not its formula
+  leaders: (i: number) => NEIGH[i].n.map((n, j) => ({ n, s: NEIGH[i].s[j], ...leaderStyle(NEIGH[i].s, j) })),
 };
