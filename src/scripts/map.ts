@@ -189,6 +189,7 @@ const focusSet = new Set<number>();
 /* ---------- environment ---------- */
 const isMobile = () => vpW() <= 760;      // vpW(), not innerWidth — see resize()
 let peekIdx = -1;                                                          // touch two-stage: peeked, not yet committed
+let nbPeek = -1;                                                           // touch: neighbour dot named in the list, one tap short of jumping to it
 
 /* ---------- draw ---------- */
 const PR = 3.1;                              // base point screen radius
@@ -441,7 +442,7 @@ function pick(mx: number, my: number, touch?: boolean) {
 
 /* ---------- selection: isolate + frame the 11 relevant points ---------- */
 function select(i: number) {
-  selected = i; focusSet.clear(); hidePeek();
+  selected = i; focusSet.clear(); hidePeek(); clearNbPeek();
   if (i >= 0) {
     for (const ni of NEIGH[i].n) focusSet.add(ni);
     fillPanel(i); openPanel(true);
@@ -490,7 +491,9 @@ function fillPanel(i: number) {
   caveat.textContent = hasBls
     ? 'Wage & employment reported by BLS at the broader occupational group level, not this specific occupation.'
     : '';
-  caveat.style.display = hasBls ? 'block' : 'none';
+  // a class, not an inline `display`: an inline style outranks every stylesheet rule, so the
+  // fold below could not hide this line and the "compact" strip kept a two-line footnote in it
+  caveat.classList.toggle('has', hasBls);
   pn.querySelector('.desc')!.textContent = d.short_description || '';
   syncClamp(pn.querySelector('.desc')!.parentElement as HTMLElement, false);
   const nb = NEIGH[i], host = document.getElementById('nbs')!; host.innerHTML = '';
@@ -509,7 +512,16 @@ function fillPanel(i: number) {
 
 /* A tap on a neighbour dot answers itself in the list: no re-select, no re-frame. Re-selecting
    moved the ground under the user — a new neighbour set, a new camera — when all they asked was
-   "which one is that?". So the dot rings, and its ranked row scrolls up and lights. */
+   "which one is that?". So the dot rings, and its ranked row scrolls up and lights.
+   The follow-up question — "then take me there" — is the SECOND tap on that same dot (endPointer),
+   and the list's own subtitle is where that gets said: a hint parked on the highlighted row would
+   have to fight the similarity bar for the width, and the subhead is already looking at the reader. */
+const nbHint = document.querySelector('#panel .nb-h span') as HTMLElement;
+const NB_SUB = nbHint.textContent!;
+function clearNbPeek() {
+  if (nbPeek < 0) return;
+  nbPeek = -1; nbHint.textContent = NB_SUB;
+}
 function highlightNb(i: number) {
   const host = document.getElementById('nbs')!;
   const el = host.querySelector(`.nb[data-i="${i}"]`) as HTMLElement | null;
@@ -522,6 +534,7 @@ function highlightNb(i: number) {
   const top = host.scrollTop + el.getBoundingClientRect().top - host.getBoundingClientRect().top
     - (host.clientHeight - el.offsetHeight) / 2;
   host.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+  nbPeek = i; nbHint.textContent = 'tap that dot again to open it';
   hovered = i; invalidate();
 }
 
@@ -553,6 +566,21 @@ document.querySelectorAll<HTMLElement>('.clamp-wrap').forEach((wrap) => {
     layoutHead();
   };
 });
+/* Fold the identity card away so the ranked list gets the sheet (phone; the control is CSS-hidden
+   on desktop). Sticky across selections on purpose: a reader who folded it is comparing the ten,
+   and re-opening the card under every job they open would undo that choice ten times over. */
+{
+  const pn = document.getElementById('panel')!, btn = pn.querySelector('.fold') as HTMLButtonElement;
+  btn.onclick = (e) => {
+    e.stopPropagation();
+    const folded = pn.classList.toggle('folded');
+    btn.setAttribute('aria-expanded', String(!folded));
+    btn.setAttribute('aria-label', folded ? 'Expand job details' : 'Collapse job details');
+    // the blurb's "More" is armed by measuring it, and a display:none blurb measures as fitting —
+    // so re-test once the card is back on screen, or the control stays wrongly hidden
+    if (!folded) syncClamps();
+  };
+}
 function openPanel(on: boolean) {
   panelOpen = on; document.getElementById('panel')!.classList.toggle('on', on);
   // mobile: the sheet owns the bottom half, so the entry chrome (wordmark, search, key) steps
@@ -630,9 +658,17 @@ function endPointer(e: PointerEvent) {
   if (wasSolo && !moved) {                                 // a tap
     const i = pick(e.clientX, e.clientY, e.pointerType === 'touch');
     if (e.pointerType === 'touch') {
-      // inside a phone's focus view the neighbour dots are unlabelled, so a tap on one is a
-      // question — "which of these is that?" — not a request to go there. Answer it in the list.
-      if (i >= 0 && isMobile() && selected >= 0 && focusSet.has(i)) { hidePeek(); highlightNb(i); return; }
+      // inside a phone's focus view the neighbour dots are unlabelled, so the FIRST tap on one is
+      // a question — "which of these is that?" — answered in the list, not by moving the map. The
+      // second tap on that same dot answers the follow-up: yes, go there. Same two-stage shape as
+      // the peek callout, and deliberately NOT a timed double-tap: a 300 ms window on a 3 px dot
+      // is a coin flip, and there is no third meaning competing for the gesture.
+      if (i >= 0 && isMobile() && selected >= 0 && focusSet.has(i)) {
+        hidePeek();
+        if (i === nbPeek) select(i); else highlightNb(i);
+        return;
+      }
+      clearNbPeek();                                                 // any other tap drops the pending jump
       if (i < 0) hidePeek();
       else if (i === peekIdx) { const s = i; hidePeek(); select(s); } // second tap on same dot = commit
       else showPeek(i);                                              // first tap = peek

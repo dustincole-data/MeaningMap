@@ -23,6 +23,13 @@ import Base from '../layouts/Base.astro';
     </div>
   </header>
 
+  <!-- signature: the masthead's right-hand end (wordmark left, byline right), a quiet way back
+       to the brand site. Its own element, not a child of #head — #head is pointer-events:none. -->
+  <a id="sig" href="https://dustincoledata.com">
+    <span class="s-full">Dustin&nbsp;Cole · dustincoledata.com</span>
+    <span class="s-short">dustincoledata.com</span>
+  </a>
+
   <div id="search" role="search">
     <div class="box">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
@@ -51,6 +58,10 @@ import Base from '../layouts/Base.astro';
 
   <aside id="panel" aria-label="Occupation detail">
     <button class="close" aria-label="Close detail panel">✕</button>
+    <!-- phone only: fold the identity card away so the ranked list gets the sheet -->
+    <button class="fold" type="button" aria-expanded="true" aria-label="Collapse job details">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg>
+    </button>
     <span class="fam-tag"><i></i><span class="ft-name"></span></span>
     <h2></h2>
     <div class="code"></div>

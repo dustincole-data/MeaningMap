@@ -40,7 +40,18 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
 }
 #head p { margin: 8px 0 0; font-size: 12px; line-height: 1.5; color: var(--ink-soft); max-width: 320px; }
 
-#search { position: absolute; top: 26px; right: 30px; width: 248px; pointer-events: auto; z-index: 6; }
+/* The byline end of the masthead: same top line as the wordmark, opposite corner. It is the only
+   thing in that corner, so the search bar starts below it rather than beside it — a 32px drop
+   that still clears fitAll()'s 110px desktop top pad, so the atlas does not move. */
+#sig {
+  position: absolute; top: 29px; right: 30px; z-index: 6; pointer-events: auto;
+  font-size: 11px; color: var(--ink-faint); text-decoration: none; letter-spacing: .01em;
+  padding: 6px 4px; margin: -6px -4px; transition: color .15s;
+}
+#sig:hover, #sig:focus-visible { color: var(--ink); }
+#sig .s-short { display: none; }                    /* phone-length name — see the mobile block */
+
+#search { position: absolute; top: 58px; right: 30px; width: 248px; pointer-events: auto; z-index: 6; }
 #search .box {
   display: flex; align-items: center; gap: 8px; background: var(--panel); backdrop-filter: blur(10px);
   border: 1px solid var(--hair); border-radius: 11px; padding: 9px 12px; box-shadow: 0 6px 22px -12px var(--shadow);
@@ -129,6 +140,7 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
   border-radius: 8px;
 }
 #panel .close:hover { background: oklch(0.26 0.02 265 / 0.06); color: var(--ink-soft); }
+#panel .fold { display: none; }                     /* desktop has the room — armed on phones only */
 #panel .fam-tag {
   display: inline-flex; align-items: center; gap: 7px; font-size: 11px; font-family: var(--narrow);
   text-transform: uppercase; letter-spacing: .1em; color: var(--ink-soft);
@@ -139,7 +151,8 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
 #panel .meta { display: flex; gap: 20px; margin: 15px 0 4px; flex-wrap: wrap; }
 #panel .meta div { font-size: 11px; color: var(--ink-faint); }
 #panel .meta b { display: block; font-size: 13px; color: var(--ink); font-weight: 600; margin-top: 2px; }
-#panel .caveat { font-size: 10px; color: var(--ink-faint); line-height: 1.4; margin: 6px 0 0; }
+#panel .caveat { display: none; font-size: 10px; color: var(--ink-faint); line-height: 1.4; margin: 6px 0 0; }
+#panel .caveat.has { display: block; }              /* .has, not an inline style — see fillPanel */
 #panel .desc { font-size: 12.5px; line-height: 1.55; color: var(--ink-soft); margin: 14px 0 4px; max-height: 104px; overflow: auto; }
 #panel .nb-h { display: flex; align-items: baseline; gap: 8px; margin: 20px 0 8px; padding-top: 16px; border-top: 1px solid var(--hair); }
 #panel .nb-h b { font-size: 13px; font-weight: 600; }
@@ -193,6 +206,13 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
     font-size: 11.5px; line-height: 1.45; margin-top: 5px;
   }
   #head .clamp-wrap.open p { -webkit-line-clamp: none; }
+
+  /* Byline sits on the wordmark's line (both centred on ~24px) and drops the name — at 390px the
+     domain alone is the signature. Offsets are padding-compensated so the text still lands on the
+     header's own 14px margin while the tap target stays ~29px tall. */
+  #sig { top: 10px; right: 8px; padding: 8px 6px; margin: 0; font-size: 10.5px; }
+  #sig .s-full { display: none; }
+  #sig .s-short { display: inline; }
 
   /* The expand control: parked over a fade at the end of the last visible line, so arming the
      affordance costs no vertical room — the whole point on a screen this tight. Opened, it
@@ -268,7 +288,26 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
      one line and can never crowd the list out — no cap needed, and none invented */
   #panel .clamp-wrap.open .desc { -webkit-line-clamp: none; }
   #panel .nb-h { margin: 12px 0 6px; padding-top: 10px; }
+
+  /* Folding the identity card. The trimming above bought the list rows back from the header; this
+     buys the rest — on demand, for a reader who is done reading the job and is now comparing the
+     ten. It keeps the family tag and the title, because a list of "jobs like this" is meaningless
+     without "like WHAT" on screen; everything else (SOC code, the three stats, the caveat, the
+     blurb) is the card, and the card is what folds. ~135px back, three more rows.
+     Scoped inside the phone block on purpose: the class can survive a rotate to desktop, where
+     there is no control to unfold it and no reason to hide anything. */
+  #panel .fold {
+    display: flex; align-items: center; justify-content: center; position: absolute; top: 10px; right: 54px;
+    width: 44px; height: 44px; border: 0; background: none; padding: 0; cursor: pointer;
+    color: var(--ink-faint); border-radius: 8px;
+  }
+  #panel .fold svg { transition: transform .25s ease; }
+  #panel.folded .fold svg { transform: rotate(180deg); }
+  #panel.folded .code, #panel.folded .meta, #panel.folded .caveat.has, #panel.folded .clamp-wrap { display: none; }
+  #panel.folded h2 { font-size: 15px; margin: 7px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #panel.folded .nb-h { margin: 10px 0 6px; padding-top: 9px; }
   /* the dot a tap landed on, answered in the list — see highlightNb() */
   .nb.hi { background: oklch(0.26 0.02 265 / 0.08); box-shadow: inset 3px 0 0 var(--ink-faint); }
-  body.panel-open #head, body.panel-open #search, body.panel-open #legend, body.panel-open #foot { display: none; }
+  body.panel-open #head, body.panel-open #search, body.panel-open #legend, body.panel-open #foot,
+  body.panel-open #sig { display: none; }
 }
