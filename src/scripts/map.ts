@@ -159,6 +159,17 @@ function fitAll(instant?: boolean) {
   const nx = padL + (availW - w * s) / 2 - BX0 * s, ny = padT + (availH - h * s) / 2 - BY0 * s;
   sFit = s; if (instant) { scale = s; ox = nx; oy = ny; invalidate(); } else animateTo(s, nx, ny);
 }
+/* Pan was unbounded: one long drag parks all 893 points off screen, and on a phone nothing
+   re-frames the view (closePanel needs an open panel), so the only way back was a reload.
+   Keep a third of the atlas — or of the screen, whichever is smaller — always in frame.
+   Applied to the reader's own gestures only; fitAll()/select() compute frames that already
+   satisfy it, and clamping their targets would fight the framing. */
+function clampView() {
+  const w = (BX1 - BX0) * scale, h = (BY1 - BY0) * scale;
+  const kx = Math.min(w, Vw) * 0.34, ky = Math.min(h, Vh) * 0.34;
+  ox = Math.min(Vw - kx - BX0 * scale, Math.max(kx - w - BX0 * scale, ox));
+  oy = Math.min(Vh - ky - BY0 * scale, Math.max(ky - h - BY0 * scale, oy));
+}
 
 /* ---------- animation ---------- */
 let anim: { s0: number; x0: number; y0: number; s: number; x: number; y: number; t0: number; ms: number } | null = null;
@@ -677,11 +688,11 @@ stage.addEventListener('pointermove', (e) => {
     const ns = Math.min(sFit * 9, Math.max(sFit * 0.7, scale * (nd / pinch.d))), k = ns / scale;
     ox = mx - (mx - ox) * k; oy = my - (my - oy) * k; scale = ns;
     ox += mx - pinch.mx; oy += my - pinch.my;            // pan by the two-finger midpoint travel
-    pinch = { d: nd, mx, my }; moved = true; anim = null; hidePeek(); invalidate(); return;
+    pinch = { d: nd, mx, my }; moved = true; anim = null; hidePeek(); clampView(); invalidate(); return;
   }
   if (drag) {
     const dx = e.clientX - lx, dy = e.clientY - ly; if (Math.abs(dx) + Math.abs(dy) > 3) { moved = true; hidePeek(); }
-    ox += dx; oy += dy; lx = e.clientX; ly = e.clientY; anim = null; invalidate(); return;
+    ox += dx; oy += dy; lx = e.clientX; ly = e.clientY; anim = null; clampView(); invalidate(); return;
   }
   if (e.pointerType === 'touch') return;                  // no hover on touch
   const i = pick(e.clientX, e.clientY); const tip = document.getElementById('tip')!;
@@ -723,7 +734,7 @@ stage.addEventListener('pointercancel', endPointer);
 stage.addEventListener('wheel', (e) => {
   e.preventDefault(); anim = null; hidePeek();
   const f = Math.exp(-e.deltaY * 0.0016), ns = Math.min(sFit * 9, Math.max(sFit * 0.7, scale * f)), k = ns / scale;
-  ox = e.clientX - (e.clientX - ox) * k; oy = e.clientY - (e.clientY - oy) * k; scale = ns; invalidate();
+  ox = e.clientX - (e.clientX - ox) * k; oy = e.clientY - (e.clientY - oy) * k; scale = ns; clampView(); invalidate();
 }, { passive: false });
 
 /* ---------- legend ---------- */

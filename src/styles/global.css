@@ -246,6 +246,11 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
      down instead of the revealed line landing underneath it. */
   #search { left: 14px; right: 14px; top: var(--search-top, 92px); width: auto; transition: top .18s ease; }
   #search .box { padding: 12px 14px; }
+  /* 16px is a functional floor, not a type choice: iOS Safari page-zooms on focus for anything
+     smaller, and this page cannot come back from a page zoom — its chrome is fixed to the layout
+     viewport, so whatever the zoom pushes outside the visual one is unreachable, and #stage's
+     touch-action:none feeds the pinch that would undo it to the map instead of the browser. */
+  #search input { font-size: 16px; }
   #results button { padding: 13px 14px; }
   #helper { display: none; }
 

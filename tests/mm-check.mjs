@@ -197,6 +197,58 @@ await tap(nb2.pt.x, nb2.pt.y);                       // should re-arm, NOT jump
 const reArmed = await page.evaluate(() => document.querySelector('#panel h2').textContent);
 ok('after disarming, one tap only names again (no jump)', reArmed === afterElsewhere, `${afterElsewhere} -> ${reArmed}`);
 
+/* ---------- the phone's two escape hatches: no page-zoom, no lost atlas (ticket 07) ----------
+   iOS Safari page-zooms whenever a focused field measures under 16px, and this page has no way
+   back from that: every surface is position:fixed to the LAYOUT viewport, so the search bar, the
+   key and the peek card the zoom pushed outside the visual viewport are simply unreachable — and
+   #stage's `touch-action:none` hands the pinch that would undo it to the map instead of the
+   browser. The field's size is therefore load-bearing, not typography. */
+ok('phone search field is >=16px, so focusing it cannot page-zoom iOS',
+  parseFloat(await page.evaluate(() => getComputedStyle(document.getElementById('q')).fontSize)) >= 16,
+  await page.evaluate(() => getComputedStyle(document.getElementById('q')).fontSize));
+
+/* ...and the drag that a page-zoomed reader ends up making must not park the atlas off screen.
+   Nothing on a phone re-frames the view (closePanel needs a panel), so an unclamped pan was
+   recoverable only by reloading the page. A fresh page: these flings must not run against the
+   focus view the tests above left behind. */
+const { page: ppan } = await newPage(browser, PHONE, 'phone-pan');
+const fling = async (dx, dy) => {
+  await ppan.evaluate(([dx, dy]) => {
+    const st = document.getElementById('stage');
+    const ev = (t, x, y, buttons) => st.dispatchEvent(new PointerEvent(t, {
+      bubbles: true, cancelable: true, pointerId: 1, pointerType: 'touch', isPrimary: true,
+      clientX: x, clientY: y, button: 0, buttons,
+    }));
+    ev('pointerdown', 195, 400, 1);
+    for (let s = 1; s <= 12; s++) ev('pointermove', 195 + (dx * s) / 12, 400 + (dy * s) / 12, 1);
+    ev('pointerup', 195 + dx, 400 + dy, 0);
+  }, [dx, dy]);
+  await ppan.waitForTimeout(200);
+  return ppan.evaluate(() => {
+    const v = window.__mm.view, [bx0, by0, bx1, by1] = window.__mm.bounds;
+    let n = 0;
+    for (let i = 0; i < 893; i++) {
+      const p = window.__mm.screenOf(i);
+      if (p.x > 0 && p.x < v.Vw && p.y > 0 && p.y < v.Vh) n++;
+    }
+    // how much of the atlas is still in frame, as a share of the smaller of atlas/screen
+    const x0 = bx0 * v.scale + v.ox, x1 = bx1 * v.scale + v.ox;
+    const y0 = by0 * v.scale + v.oy, y1 = by1 * v.scale + v.oy;
+    const ov = (a0, a1, len) => Math.max(0, Math.min(a1, len) - Math.max(a0, 0)) / Math.min(a1 - a0, len);
+    return { n, keptX: ov(x0, x1, v.Vw), keptY: ov(y0, y1, v.Vh) };
+  });
+};
+const flat = [await fling(3600, 3600), await fling(-7200, -7200)];
+ok('a long drag cannot push the atlas off the fit view', flat.every((r) => r.n > 0),
+  `points left on screen: ${flat.map((r) => r.n).join(' then ')}`);
+/* the same guarantee inside a focus view, where the zoom is high enough that an empty patch of
+   map can legitimately hold no dots — so here the atlas itself, not a point, is what must stay */
+await openJob(ppan, 'Personal Financial Advisors', 900);          // Dustin's own search, 2026-08-11
+const zoomed = [await fling(4000, 4000), await fling(-8000, -8000)];
+ok('a long drag cannot lose the atlas inside a focus view',
+  zoomed.every((r) => r.keptX > 0.2 && r.keptY > 0.2),
+  zoomed.map((r) => `${Math.round(r.keptX * 100)}%/${Math.round(r.keptY * 100)}%`).join(' then '));
+
 /* ---------- desktop regression: nothing folded, sig on its own line, search below ---------- */
 const { page: dpage } = await newPage(browser, DESKTOP, 'desktop');
 const d = await dpage.evaluate(() => {
